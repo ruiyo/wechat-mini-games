@@ -27,7 +27,7 @@ Settings -> Secrets and variables -> Actions -> Variables：
 |---|---|
 | COCOS_CREATOR_PATH | C:\ProgramData\cocos\editors\Creator\3.8.8\CocosCreator.exe |
 
-ENABLE_COCOS_BUILD 不再使用；可信分支 push 会自动构建。
+ENABLE_COCOS_BUILD 不再使用；可信分支 push 会自动构建。若配置 WECHAT_APP_ID，构建脚本会在输出包中自动替换 project.config.json 的 AppID。
 
 ## Cocos 项目目录
 

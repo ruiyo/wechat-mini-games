@@ -50,6 +50,7 @@ jobs:
         shell: powershell
         env:
           COCOS_CREATOR_PATH: ${{ vars.COCOS_CREATOR_PATH }}
+          WECHAT_APP_ID: ${{ vars.WECHAT_APP_ID }}
         run: |
           $ErrorActionPreference = 'Stop'
           $projectPath = Join-Path $env:GITHUB_WORKSPACE 'games\puck-battle'
