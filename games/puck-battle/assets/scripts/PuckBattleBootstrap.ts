@@ -964,7 +964,8 @@ export class PuckBattleBootstrap extends Component {
       return;
     }
 
-    const puckPosition = this.currentPuck.node.position;
+    const puck = this.currentPuck;
+    const puckPosition = puck.node.position;
     const distance = distanceBetween(
       point.x,
       point.y,
@@ -998,7 +999,9 @@ export class PuckBattleBootstrap extends Component {
     const dy = this.dragStart.y - this.dragCurrent.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
 
-    if (distance < PUCK_CONFIG.minPullDistance || !this.currentPuck || !this.currentAmmo) {
+    const puck = this.currentPuck;
+    const ammo = this.currentAmmo;
+    if (distance < PUCK_CONFIG.minPullDistance || !puck || !ammo) {
       this.state = GameState.READY;
       return;
     }
@@ -1006,7 +1009,7 @@ export class PuckBattleBootstrap extends Component {
     const power = Math.min(distance / PUCK_CONFIG.maxPullDistance, 1);
     const speed = PUCK_CONFIG.maxLaunchSpeed *
       power *
-      this.currentAmmo.launchSpeedMultiplier;
+      ammo.launchSpeedMultiplier;
 
     const velocity = new Vec2(
       (dx / distance) * speed,
@@ -1014,8 +1017,8 @@ export class PuckBattleBootstrap extends Component {
     );
 
     this.scoreBeforeShot = this.totalScore;
-    this.currentPuck.body.linearVelocity = velocity;
-    this.currentPuck.body.wakeUp();
+    puck.body.linearVelocity = velocity;
+    puck.body.wakeUp();
 
     this.state = GameState.FLYING;
     this.settleElapsed = 0;
@@ -1112,9 +1115,10 @@ export class PuckBattleBootstrap extends Component {
     this.settleElapsed = 0;
     this.shotElapsed = 0;
 
-    if (!this.currentPuck) return;
+    const currentPuck = this.currentPuck;
+    if (!currentPuck) return;
 
-    const position = this.currentPuck.node.position;
+    const position = currentPuck.node.position;
     const distance = distanceBetween(
       position.x,
       position.y,
@@ -1136,12 +1140,12 @@ export class PuckBattleBootstrap extends Component {
         1 + (this.comboStreak - 1) * PUCK_CONFIG.comboStep,
         PUCK_CONFIG.maxComboMultiplier,
       );
-      this.currentPuck.scoreMultiplier =
-        comboMultiplier * this.currentPuck.ammo.scoreMultiplier;
+      currentPuck.scoreMultiplier =
+        comboMultiplier * currentPuck.ammo.scoreMultiplier;
     } else {
       this.comboStreak = 0;
       this.missCount += 1;
-      this.currentPuck.scoreMultiplier = 1;
+      currentPuck.scoreMultiplier = 1;
     }
 
     this.shotsFired += 1;
