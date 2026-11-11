@@ -26,6 +26,7 @@ Settings -> Secrets and variables -> Actions -> Variables：
 | 变量 | 值 |
 |---|---|
 | COCOS_CREATOR_PATH | C:\ProgramData\cocos\editors\Creator\3.8.8\CocosCreator.exe |
+| WECHAT_APP_ID | Optional official Mini Program AppID (`wx` + 16 hexadecimal characters); unset keeps the Cocos preview AppID |
 
 ENABLE_COCOS_BUILD 不再使用；可信分支 push 会自动构建。若配置 WECHAT_APP_ID，构建脚本会在输出包中自动替换 project.config.json 的 AppID。
 
