@@ -1,0 +1,13 @@
+{
+  "ver": "4.0.21",
+  "importer": "typescript",
+  "imported": true,
+  "uuid": "8f1a4c20-5d73-4e96-9b2a-6c0f3e8d1a54",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "importAsPlugin": false,
+    "moduleId": "project:///assets/scripts/AmmoEffectController.js",
+    "importerSettings": 7
+  }
+}

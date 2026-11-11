@@ -1,0 +1,13 @@
+{
+  "ver": "4.0.21",
+  "importer": "typescript",
+  "imported": true,
+  "uuid": "7c3d5e10-2a84-4f69-b1c7-8e0d3a5f9b26",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "importAsPlugin": false,
+    "moduleId": "project:///assets/scripts/AmmoFactory.js",
+    "importerSettings": 7
+  }
+}

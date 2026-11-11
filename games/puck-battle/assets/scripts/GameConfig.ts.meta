@@ -1,0 +1,13 @@
+{
+  "ver": "4.0.21",
+  "importer": "typescript",
+  "imported": true,
+  "uuid": "3b9c2e41-0d76-4a85-9f23-6c1d8b4e7a50",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "importAsPlugin": false,
+    "moduleId": "project:///assets/scripts/GameConfig.js",
+    "importerSettings": 7
+  }
+}

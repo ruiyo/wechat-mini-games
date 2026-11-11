@@ -1,0 +1,13 @@
+{
+  "ver": "4.0.21",
+  "importer": "typescript",
+  "imported": true,
+  "uuid": "2e6b4d80-9c31-4f57-b2a8-5d0e7c3f1a69",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "importAsPlugin": false,
+    "moduleId": "project:///assets/scripts/SaveManager.js",
+    "importerSettings": 7
+  }
+}

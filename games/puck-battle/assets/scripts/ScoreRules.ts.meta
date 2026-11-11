@@ -1,0 +1,13 @@
+{
+  "ver": "4.0.21",
+  "importer": "typescript",
+  "imported": true,
+  "uuid": "9a5c2e70-1d84-4b63-a7f9-2e0c5d8b1a36",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "importAsPlugin": false,
+    "moduleId": "project:///assets/scripts/ScoreRules.js",
+    "importerSettings": 7
+  }
+}

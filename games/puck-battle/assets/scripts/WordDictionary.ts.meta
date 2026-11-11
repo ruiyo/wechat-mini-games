@@ -1,0 +1,13 @@
+{
+  "ver": "4.0.21",
+  "importer": "typescript",
+  "imported": true,
+  "uuid": "4d7e9a20-3c51-4f86-b2d9-0a6e3c8f1b75",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "importAsPlugin": false,
+    "moduleId": "project:///assets/scripts/WordDictionary.js",
+    "importerSettings": 7
+  }
+}
