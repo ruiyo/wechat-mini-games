@@ -5,38 +5,24 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if ([string]::IsNullOrWhiteSpace($CreatorPath)) {
-    throw 'COCOS_CREATOR_PATH is empty.'
-}
-if (-not (Test-Path -LiteralPath $CreatorPath -PathType Leaf)) {
-    throw "Cocos Creator executable not found: $CreatorPath"
-}
-if (-not (Test-Path -LiteralPath $ProjectPath -PathType Container)) {
-    throw "Cocos project not found: $ProjectPath"
-}
+if ([string]::IsNullOrWhiteSpace($CreatorPath)) { throw 'COCOS_CREATOR_PATH is empty.' }
+if (-not (Test-Path -LiteralPath $CreatorPath -PathType Leaf)) { throw "Cocos Creator executable not found: $CreatorPath" }
+if (-not (Test-Path -LiteralPath $ProjectPath -PathType Container)) { throw "Cocos project not found: $ProjectPath" }
 
 $packagePath = Join-Path $ProjectPath 'package.json'
 $package = Get-Content -LiteralPath $packagePath -Raw | ConvertFrom-Json
-if ($package.creator.version -ne '3.8.8') {
-    throw "Expected Cocos Creator 3.8.8, found $($package.creator.version)"
-}
+if ($package.creator.version -ne '3.8.8') { throw "Expected Cocos Creator 3.8.8, found $($package.creator.version)" }
 
 $engineSettingsPath = Join-Path $ProjectPath 'settings\v2\packages\engine.json'
 $projectSettingsPath = Join-Path $ProjectPath 'settings\v2\packages\project.json'
 $scenePath = Join-Path $ProjectPath 'assets\scenes\Game.scene'
 $sceneMetaPath = "$scenePath.meta"
 $scriptMetaPath = Join-Path $ProjectPath 'assets\scripts\PuckBattleBootstrap.ts.meta'
-
 foreach ($file in @($engineSettingsPath, $projectSettingsPath, $scenePath, $sceneMetaPath, $scriptMetaPath)) {
-    if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
-        throw "Required Cocos project file missing: $file"
-    }
+    if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Required Cocos project file missing: $file" }
 }
-
 $engineSettings = Get-Content -LiteralPath $engineSettingsPath -Raw | ConvertFrom-Json
-if ($engineSettings.modules.includeModules -notcontains 'physics-2d-box2d') {
-    throw 'The project engine settings do not include physics-2d-box2d.'
-}
+if ($engineSettings.modules.includeModules -notcontains 'physics-2d-box2d') { throw 'The project engine settings do not include physics-2d-box2d.' }
 
 $runnerTemp = $env:RUNNER_TEMP
 if ([string]::IsNullOrWhiteSpace($runnerTemp)) { $runnerTemp = $env:TEMP }
@@ -50,25 +36,12 @@ $summaryPath = Join-Path $runnerTemp 'cocos-build.log'
 $configPath = Join-Path $PSScriptRoot 'wechat-build-config.json'
 $buildOutputRoot = Join-Path $ProjectPath 'build'
 $buildPath = Join-Path $buildOutputRoot 'ci-wechatgame'
-
-if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
-    throw "Cocos build configuration is missing: $configPath"
-}
-$buildConfig = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
-if ($buildConfig.platform -ne 'wechatgame') {
-    throw 'The Cocos build config must target platform=wechatgame.'
-}
-if (-not ($buildConfig.debug -is [bool])) {
-    throw 'The Cocos build config debug field must be a JSON boolean.'
-}
-if ($buildConfig.buildPath -ne 'project://build') {
-    throw 'The Cocos build config must use buildPath=project://build.'
-}
-if ($buildConfig.outputName -ne 'ci-wechatgame') {
-    throw 'The Cocos build config must use outputName=ci-wechatgame.'
-}
-
 $buildArgs = "configPath=$configPath;logDest=$cliLogPath"
+if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { throw "Cocos build configuration is missing: $configPath" }
+$buildConfig = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+if ($buildConfig.platform -ne 'wechatgame') { throw 'The Cocos build config must target platform=wechatgame.' }
+if (-not ($buildConfig.debug -is [bool])) { throw 'The Cocos build config debug field must be a JSON boolean.' }
+if ($buildConfig.buildPath -ne 'project://build' -or $buildConfig.outputName -ne 'ci-wechatgame') { throw 'The Cocos build config must use project://build and outputName=ci-wechatgame.' }
 
 @(
     'Word Puck Cocos Creator build diagnostics'
@@ -76,33 +49,23 @@ $buildArgs = "configPath=$configPath;logDest=$cliLogPath"
     ('Windows identity: ' + (& whoami))
     ('USERPROFILE: ' + $env:USERPROFILE)
     ('Creator executable: ' + $CreatorPath)
-    ('Creator version expected: 3.8.8')
     ('Project root: ' + $ProjectPath)
     ('Project settings: ' + $engineSettingsPath)
     ('Build config: ' + $configPath)
     ('Build output: ' + $buildPath)
     ('Runner temp: ' + $runnerTemp)
-    ('Build arguments: ' + $buildArgs)
 ) | Set-Content -LiteralPath $summaryPath -Encoding UTF8
 
 try {
-    $creatorProcesses = @(Get-CimInstance Win32_Process -Filter "Name='CocosCreator.exe'" |
-        Select-Object ProcessId, ParentProcessId, CommandLine)
-    ('Existing CocosCreator.exe process count: ' + $creatorProcesses.Count) |
-        Add-Content -LiteralPath $summaryPath -Encoding UTF8
-    $creatorProcesses | Format-List | Out-String |
-        Add-Content -LiteralPath $summaryPath -Encoding UTF8
+    $creatorProcesses = @(Get-CimInstance Win32_Process -Filter "Name='CocosCreator.exe'" | Select-Object ProcessId, ParentProcessId, CommandLine)
+    ('Existing CocosCreator.exe process count: ' + $creatorProcesses.Count) | Add-Content -LiteralPath $summaryPath -Encoding UTF8
+    $creatorProcesses | Format-List | Out-String | Add-Content -LiteralPath $summaryPath -Encoding UTF8
 } catch {
-    ('Could not enumerate existing Cocos Creator processes: ' + $_.Exception.Message) |
-        Add-Content -LiteralPath $summaryPath -Encoding UTF8
+    ('Could not enumerate existing Cocos Creator processes: ' + $_.Exception.Message) | Add-Content -LiteralPath $summaryPath -Encoding UTF8
 }
 
-if (Test-Path -LiteralPath $buildPath) {
-    Remove-Item -LiteralPath $buildPath -Recurse -Force
-}
-foreach ($oldLog in @($stdoutPath, $stderrPath, $cliLogPath)) {
-    if (Test-Path -LiteralPath $oldLog) { Remove-Item -LiteralPath $oldLog -Force }
-}
+if (Test-Path -LiteralPath $buildPath) { Remove-Item -LiteralPath $buildPath -Recurse -Force }
+foreach ($oldLog in @($stdoutPath, $stderrPath, $cliLogPath)) { if (Test-Path -LiteralPath $oldLog) { Remove-Item -LiteralPath $oldLog -Force } }
 
 Write-Host "Running as: $(& whoami)"
 Write-Host "User profile: $env:USERPROFILE"
@@ -110,93 +73,49 @@ Write-Host "Cocos Creator: $CreatorPath"
 Write-Host "Project: $ProjectPath"
 Write-Host "Build config: $configPath"
 Write-Host "Build output: $buildPath"
-Write-Host "Build log: $summaryPath"
 
-$argumentList = @(
-    '--project',
-    ('"' + $ProjectPath + '"'),
-    '--build',
-    ('"' + $buildArgs + '"')
-)
-
+$argumentList = @('--project', ('"' + $ProjectPath + '"'), '--build', ('"' + $buildArgs + '"'))
 try {
     $process = Start-Process -FilePath $CreatorPath -ArgumentList $argumentList -WorkingDirectory $ProjectPath -PassThru -Wait -NoNewWindow -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
     $exitCode = $process.ExitCode
 } catch {
-    ('Start-Process failed: ' + $_.Exception.ToString()) |
-        Add-Content -LiteralPath $summaryPath -Encoding UTF8
+    ('Start-Process failed: ' + $_.Exception.ToString()) | Add-Content -LiteralPath $summaryPath -Encoding UTF8
     throw
 }
 
 '--- Cocos Creator stdout ---' | Add-Content -LiteralPath $summaryPath -Encoding UTF8
-if (Test-Path -LiteralPath $stdoutPath) {
-    Get-Content -LiteralPath $stdoutPath -Raw |
-        Add-Content -LiteralPath $summaryPath -Encoding UTF8
-}
+if (Test-Path -LiteralPath $stdoutPath) { Get-Content -LiteralPath $stdoutPath -Raw | Add-Content -LiteralPath $summaryPath -Encoding UTF8 }
 '--- Cocos Creator stderr ---' | Add-Content -LiteralPath $summaryPath -Encoding UTF8
-if (Test-Path -LiteralPath $stderrPath) {
-    Get-Content -LiteralPath $stderrPath -Raw |
-        Add-Content -LiteralPath $summaryPath -Encoding UTF8
-}
+if (Test-Path -LiteralPath $stderrPath) { Get-Content -LiteralPath $stderrPath -Raw | Add-Content -LiteralPath $summaryPath -Encoding UTF8 }
 '--- Cocos Creator internal log ---' | Add-Content -LiteralPath $summaryPath -Encoding UTF8
-if (Test-Path -LiteralPath $cliLogPath) {
-    Get-Content -LiteralPath $cliLogPath -Raw |
-        Add-Content -LiteralPath $summaryPath -Encoding UTF8
-}
+if (Test-Path -LiteralPath $cliLogPath) { Get-Content -LiteralPath $cliLogPath -Raw | Add-Content -LiteralPath $summaryPath -Encoding UTF8 }
+('Cocos Creator process exit code: ' + $exitCode) | Add-Content -LiteralPath $summaryPath -Encoding UTF8
+if ($exitCode -notin @(0, 36)) { throw "Cocos Creator build failed with exit code $exitCode. See $summaryPath and $cliLogPath" }
 
-('Cocos Creator process exit code: ' + $exitCode) |
-    Add-Content -LiteralPath $summaryPath -Encoding UTF8
-
-if ($exitCode -notin @(0, 36)) {
-    throw "Cocos Creator build failed with exit code $exitCode. See $summaryPath and $cliLogPath"
-}
 if (-not (Test-Path -LiteralPath $buildPath -PathType Container)) {
     $fallbackPath = Join-Path $buildOutputRoot 'wechatgame'
-    if (Test-Path -LiteralPath $fallbackPath -PathType Container) {
-        throw "Build was generated in the fallback directory $fallbackPath. Check the committed build config and Cocos Creator CLI output."
-    }
+    if (Test-Path -LiteralPath $fallbackPath -PathType Container) { throw "Build was generated in fallback directory $fallbackPath instead of $buildPath." }
     throw "Cocos Creator exited successfully but build output is missing: $buildPath"
 }
-
 $buildFiles = @(Get-ChildItem -LiteralPath $buildPath -File -Recurse)
-if ($buildFiles.Count -eq 0) {
-    throw "Cocos Creator build output is empty: $buildPath"
-}
+if ($buildFiles.Count -eq 0) { throw "Cocos Creator build output is empty: $buildPath" }
 
-$requiredOutputs = @(
-    'game.js',
-    'game.json',
-    'project.config.json',
-    'application.js',
-    'engine-adapter.js',
-    'cocos-js\cc.js',
-    'assets\main\index.js',
-    'assets\main\config.json'
-)
+$requiredOutputs = @('game.js', 'game.json', 'project.config.json', 'application.js', 'engine-adapter.js', 'cocos-js\cc.js', 'assets\main\index.js', 'assets\main\config.json', 'src\settings.json')
 foreach ($relativeOutput in $requiredOutputs) {
     $outputFile = Join-Path $buildPath $relativeOutput
-    if (-not (Test-Path -LiteralPath $outputFile -PathType Leaf)) {
-        throw "Required WeChat build output is missing: $outputFile"
-    }
+    if (-not (Test-Path -LiteralPath $outputFile -PathType Leaf)) { throw "Required WeChat build output is missing: $outputFile" }
 }
 
 $wechatProjectConfigPath = Join-Path $buildPath 'project.config.json'
-# Windows PowerShell 5.1 defaults Get-Content to the active ANSI code page.
-# Read generated UTF-8 JSON explicitly because project.config.json contains Chinese text.
 $wechatProjectConfigJson = [System.IO.File]::ReadAllText($wechatProjectConfigPath, [System.Text.Encoding]::UTF8)
 $wechatProjectConfig = $wechatProjectConfigJson | ConvertFrom-Json
-
-# Optional repository variable: WECHAT_APP_ID. Leave unset for the Cocos preview AppID.
+# Optional repository variable WECHAT_APP_ID: leave unset for the Cocos preview AppID.
 if (-not [string]::IsNullOrWhiteSpace($env:WECHAT_APP_ID)) {
     $candidateAppId = $env:WECHAT_APP_ID.Trim()
-    if ($candidateAppId.Length -ne 18 -or -not $candidateAppId.StartsWith('wx')) {
-        throw 'WECHAT_APP_ID must be a valid 18-character WeChat Mini Program AppID.'
-    }
+    if ($candidateAppId.Length -ne 18 -or -not $candidateAppId.StartsWith('wx')) { throw 'WECHAT_APP_ID must be a valid 18-character WeChat Mini Program AppID.' }
     $appIdHex = $candidateAppId.Substring(2)
     foreach ($character in $appIdHex.ToCharArray()) {
-        if ('0123456789abcdefABCDEF'.IndexOf($character) -lt 0) {
-            throw 'WECHAT_APP_ID must contain only hexadecimal characters after wx.'
-        }
+        if ('0123456789abcdefABCDEF'.IndexOf($character) -lt 0) { throw 'WECHAT_APP_ID must contain only hexadecimal characters after wx.' }
     }
     $wechatProjectConfig.appid = $candidateAppId
     $updatedConfig = $wechatProjectConfig | ConvertTo-Json -Depth 100 -Compress
@@ -204,39 +123,27 @@ if (-not [string]::IsNullOrWhiteSpace($env:WECHAT_APP_ID)) {
     [System.IO.File]::WriteAllText($wechatProjectConfigPath, $updatedConfig, $utf8NoBom)
     $wechatProjectConfig = $updatedConfig | ConvertFrom-Json
 }
-if ([string]::IsNullOrWhiteSpace($wechatProjectConfig.appid)) {
-    throw 'The generated WeChat project.config.json has an empty AppID.'
-}
-if ($wechatProjectConfig.appid -eq 'wx6ac3f5090a6b99c5') {
-    Write-Warning 'The generated package still uses the default Cocos/WeChat AppID. Replace it with the official Mini Program AppID before publishing.'
-}
+if ($wechatProjectConfig.compileType -ne 'game') { throw "Expected WeChat compileType=game, found $($wechatProjectConfig.compileType)" }
+if ([string]::IsNullOrWhiteSpace($wechatProjectConfig.appid)) { throw 'The generated WeChat project.config.json has an empty AppID.' }
+if ($wechatProjectConfig.appid -eq 'wx6ac3f5090a6b99c5') { Write-Warning 'The generated package still uses the default Cocos/WeChat AppID. Replace it with the official Mini Program AppID before publishing.' }
 
 $gameJsonPath = Join-Path $buildPath 'game.json'
 $gameJsonText = [System.IO.File]::ReadAllText($gameJsonPath, [System.Text.Encoding]::UTF8)
 $gameJson = $gameJsonText | ConvertFrom-Json
-if ($gameJson.deviceOrientation -ne 'portrait') {
-    throw "Expected WeChat deviceOrientation=portrait, found $($gameJson.deviceOrientation)"
-}
+if ($gameJson.deviceOrientation -ne 'portrait') { throw "Expected WeChat deviceOrientation=portrait, found $($gameJson.deviceOrientation)" }
 
 $runtimeSettingsPath = Join-Path $buildPath 'src\settings.json'
 $runtimeSettingsJson = [System.IO.File]::ReadAllText($runtimeSettingsPath, [System.Text.Encoding]::UTF8)
 $runtimeSettings = $runtimeSettingsJson | ConvertFrom-Json
 $designResolution = $runtimeSettings.screen.designResolution
-if ($designResolution.width -ne 720 -or $designResolution.height -ne 1280) {
-    throw "Expected runtime design resolution 720x1280, found $($designResolution.width)x$($designResolution.height)"
-}
+if ($designResolution.width -ne 720 -or $designResolution.height -ne 1280) { throw "Expected runtime design resolution 720x1280, found $($designResolution.width)x$($designResolution.height)" }
 
 $mainScriptPath = Join-Path $buildPath 'assets\main\index.js'
 $mainScript = Get-Content -LiteralPath $mainScriptPath -Raw
-if ($mainScript -notmatch 'PuckBattleBootstrap') {
-    throw 'PuckBattleBootstrap was not found in the compiled main script bundle.'
-}
-
+if ($mainScript -notmatch 'PuckBattleBootstrap') { throw 'PuckBattleBootstrap was not found in the compiled main script bundle.' }
 $mainConfigPath = Join-Path $buildPath 'assets\main\config.json'
 $mainConfig = Get-Content -LiteralPath $mainConfigPath -Raw
-if ($mainConfig -notmatch 'c14a2f70-6d83-4b95-a1e7-3c8f0d2b6a49') {
-    throw 'The compiled main bundle does not reference the Game.scene UUID.'
-}
+if ($mainConfig -notmatch 'c14a2f70-6d83-4b95-a1e7-3c8f0d2b6a49') { throw 'The compiled main bundle does not reference the Game.scene UUID.' }
 
 @(
     ('Build output file count: ' + $buildFiles.Count)
@@ -247,180 +154,5 @@ if ($mainConfig -notmatch 'c14a2f70-6d83-4b95-a1e7-3c8f0d2b6a49') {
     'Main script contains PuckBattleBootstrap: yes'
     'Main bundle references Game.scene: yes'
 ) | Add-Content -LiteralPath $summaryPath -Encoding UTF8
-
-Write-Host "WeChat Mini Game build completed. Output files: $($buildFiles.Count)"
-Write-Host "Build output: $buildPath"
-) {
-        throw 'WECHAT_APP_ID must be a valid 18-character WeChat Mini Program AppID.'
-    }
-    $wechatProjectConfig.appid = $env:WECHAT_APP_ID
-    $updatedConfig = $wechatProjectConfig | ConvertTo-Json -Depth 100 -Compress
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($wechatProjectConfigPath, $updatedConfig, $utf8NoBom)
-    $wechatProjectConfig = $updatedConfig | ConvertFrom-Json
-}
-
-if ($wechatProjectConfig.compileType -ne 'game') {
-    throw "Expected WeChat compileType=game, found $($wechatProjectConfig.compileType)"
-}
-if ([string]::IsNullOrWhiteSpace($wechatProjectConfig.appid)) {
-    throw 'The generated WeChat project.config.json has an empty AppID.'
-}
-if ($wechatProjectConfig.appid -eq 'wx6ac3f5090a6b99c5') {
-    Write-Warning 'The generated package still uses the default Cocos/WeChat AppID. Replace it with the official Mini Program AppID before publishing.'
-}
-
-$gameJsonPath = Join-Path $buildPath 'game.json'
-$gameJsonText = [System.IO.File]::ReadAllText($gameJsonPath, [System.Text.Encoding]::UTF8)
-$gameJson = $gameJsonText | ConvertFrom-Json
-if ($gameJson.deviceOrientation -ne 'portrait') {
-    throw "Expected WeChat deviceOrientation=portrait, found $($gameJson.deviceOrientation)"
-}
-
-$runtimeSettingsPath = Join-Path $buildPath 'src\settings.json'
-$runtimeSettingsJson = [System.IO.File]::ReadAllText($runtimeSettingsPath, [System.Text.Encoding]::UTF8)
-$runtimeSettings = $runtimeSettingsJson | ConvertFrom-Json
-$designResolution = $runtimeSettings.screen.designResolution
-if ($designResolution.width -ne 720 -or $designResolution.height -ne 1280) {
-    throw "Expected runtime design resolution 720x1280, found $($designResolution.width)x$($designResolution.height)"
-}
-
-$mainScriptPath = Join-Path $buildPath 'assets\main\index.js'
-$mainScript = Get-Content -LiteralPath $mainScriptPath -Raw
-if ($mainScript -notmatch 'PuckBattleBootstrap') {
-    throw 'PuckBattleBootstrap was not found in the compiled main script bundle.'
-}
-
-$mainConfigPath = Join-Path $buildPath 'assets\main\config.json'
-$mainConfig = Get-Content -LiteralPath $mainConfigPath -Raw
-if ($mainConfig -notmatch 'c14a2f70-6d83-4b95-a1e7-3c8f0d2b6a49') {
-    throw 'The compiled main bundle does not reference the Game.scene UUID.'
-}
-
-@(
-    ('Build output file count: ' + $buildFiles.Count)
-    ('WeChat compile type: ' + $wechatProjectConfig.compileType)
-    ('WeChat AppID: ' + $wechatProjectConfig.appid)
-    ('Device orientation: ' + $gameJson.deviceOrientation)
-    ('Runtime design resolution: ' + $designResolution.width + 'x' + $designResolution.height)
-    'Main script contains PuckBattleBootstrap: yes'
-    'Main bundle references Game.scene: yes'
-) | Add-Content -LiteralPath $summaryPath -Encoding UTF8
-
-Write-Host "WeChat Mini Game build completed. Output files: $($buildFiles.Count)"
-Write-Host "Build output: $buildPath"
-) {
-        throw 'WECHAT_APP_ID must be a valid 18-character WeChat Mini Program AppID.'
-    }
-    $wechatProjectConfig.appid = $env:WECHAT_APP_ID
-    $updatedConfig = $wechatProjectConfig | ConvertTo-Json -Depth 100 -Compress
-    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-    [System.IO.File]::WriteAllText($wechatProjectConfigPath, $updatedConfig, $utf8NoBom)
-    $wechatProjectConfig = $updatedConfig | ConvertFrom-Json
-}
-if ($wechatProjectConfig.compileType -ne 'game') {
-if ([string]::IsNullOrWhiteSpace($wechatProjectConfig.appid)) {
-    throw 'The generated WeChat project.config.json has an empty AppID.'
-}
-if ($wechatProjectConfig.appid -eq 'wx6ac3f5090a6b99c5') {
-    Write-Warning 'The generated package still uses the default Cocos/WeChat AppID. Replace it with the official Mini Program AppID before publishing.'
-}
-
-$gameJsonPath = Join-Path $buildPath 'game.json'
-$gameJsonText = [System.IO.File]::ReadAllText($gameJsonPath, [System.Text.Encoding]::UTF8)
-$gameJson = $gameJsonText | ConvertFrom-Json
-if ($gameJson.deviceOrientation -ne 'portrait') {
-    throw "Expected WeChat deviceOrientation=portrait, found $($gameJson.deviceOrientation)"
-}
-
-$runtimeSettingsPath = Join-Path $buildPath 'src\settings.json'
-$runtimeSettingsJson = [System.IO.File]::ReadAllText($runtimeSettingsPath, [System.Text.Encoding]::UTF8)
-$runtimeSettings = $runtimeSettingsJson | ConvertFrom-Json
-$designResolution = $runtimeSettings.screen.designResolution
-if ($designResolution.width -ne 720 -or $designResolution.height -ne 1280) {
-    throw "Expected runtime design resolution 720x1280, found $($designResolution.width)x$($designResolution.height)"
-}
-
-$mainScriptPath = Join-Path $buildPath 'assets\main\index.js'
-$mainScript = Get-Content -LiteralPath $mainScriptPath -Raw
-if ($mainScript -notmatch 'PuckBattleBootstrap') {
-    throw 'PuckBattleBootstrap was not found in the compiled main script bundle.'
-}
-
-$mainConfigPath = Join-Path $buildPath 'assets\main\config.json'
-$mainConfig = Get-Content -LiteralPath $mainConfigPath -Raw
-if ($mainConfig -notmatch 'c14a2f70-6d83-4b95-a1e7-3c8f0d2b6a49') {
-    throw 'The compiled main bundle does not reference the Game.scene UUID.'
-}
-
-@(
-    ('Build output file count: ' + $buildFiles.Count)
-    ('WeChat compile type: ' + $wechatProjectConfig.compileType)
-    ('WeChat AppID: ' + $wechatProjectConfig.appid)
-    ('Device orientation: ' + $gameJson.deviceOrientation)
-    ('Runtime design resolution: ' + $designResolution.width + 'x' + $designResolution.height)
-    'Main script contains PuckBattleBootstrap: yes'
-    'Main bundle references Game.scene: yes'
-) | Add-Content -LiteralPath $summaryPath -Encoding UTF8
-
-Write-Host "WeChat Mini Game build completed. Output files: $($buildFiles.Count)"
-Write-Host "Build output: $buildPath"
-) {
-        throw 'WECHAT_APP_ID must be a valid 18-character WeChat Mini Program AppID.'
-    }
-    $wechatProjectConfig.appid = $env:WECHAT_APP_ID
-    $updatedConfig = $wechatProjectConfig | ConvertTo-Json -Depth 100 -Compress
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($wechatProjectConfigPath, $updatedConfig, $utf8NoBom)
-    $wechatProjectConfig = $updatedConfig | ConvertFrom-Json
-}
-
-if ($wechatProjectConfig.compileType -ne 'game') {
-    throw "Expected WeChat compileType=game, found $($wechatProjectConfig.compileType)"
-}
-if ([string]::IsNullOrWhiteSpace($wechatProjectConfig.appid)) {
-    throw 'The generated WeChat project.config.json has an empty AppID.'
-}
-if ($wechatProjectConfig.appid -eq 'wx6ac3f5090a6b99c5') {
-    Write-Warning 'The generated package still uses the default Cocos/WeChat AppID. Replace it with the official Mini Program AppID before publishing.'
-}
-
-$gameJsonPath = Join-Path $buildPath 'game.json'
-$gameJsonText = [System.IO.File]::ReadAllText($gameJsonPath, [System.Text.Encoding]::UTF8)
-$gameJson = $gameJsonText | ConvertFrom-Json
-if ($gameJson.deviceOrientation -ne 'portrait') {
-    throw "Expected WeChat deviceOrientation=portrait, found $($gameJson.deviceOrientation)"
-}
-
-$runtimeSettingsPath = Join-Path $buildPath 'src\settings.json'
-$runtimeSettingsJson = [System.IO.File]::ReadAllText($runtimeSettingsPath, [System.Text.Encoding]::UTF8)
-$runtimeSettings = $runtimeSettingsJson | ConvertFrom-Json
-$designResolution = $runtimeSettings.screen.designResolution
-if ($designResolution.width -ne 720 -or $designResolution.height -ne 1280) {
-    throw "Expected runtime design resolution 720x1280, found $($designResolution.width)x$($designResolution.height)"
-}
-
-$mainScriptPath = Join-Path $buildPath 'assets\main\index.js'
-$mainScript = Get-Content -LiteralPath $mainScriptPath -Raw
-if ($mainScript -notmatch 'PuckBattleBootstrap') {
-    throw 'PuckBattleBootstrap was not found in the compiled main script bundle.'
-}
-
-$mainConfigPath = Join-Path $buildPath 'assets\main\config.json'
-$mainConfig = Get-Content -LiteralPath $mainConfigPath -Raw
-if ($mainConfig -notmatch 'c14a2f70-6d83-4b95-a1e7-3c8f0d2b6a49') {
-    throw 'The compiled main bundle does not reference the Game.scene UUID.'
-}
-
-@(
-    ('Build output file count: ' + $buildFiles.Count)
-    ('WeChat compile type: ' + $wechatProjectConfig.compileType)
-    ('WeChat AppID: ' + $wechatProjectConfig.appid)
-    ('Device orientation: ' + $gameJson.deviceOrientation)
-    ('Runtime design resolution: ' + $designResolution.width + 'x' + $designResolution.height)
-    'Main script contains PuckBattleBootstrap: yes'
-    'Main bundle references Game.scene: yes'
-) | Add-Content -LiteralPath $summaryPath -Encoding UTF8
-
 Write-Host "WeChat Mini Game build completed. Output files: $($buildFiles.Count)"
 Write-Host "Build output: $buildPath"
