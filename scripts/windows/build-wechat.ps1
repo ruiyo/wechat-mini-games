@@ -188,8 +188,122 @@ $wechatProjectConfig = $wechatProjectConfigJson | ConvertFrom-Json
 
 # Optional repository variable: WECHAT_APP_ID. Leave unset for the Cocos preview AppID.
 if (-not [string]::IsNullOrWhiteSpace($env:WECHAT_APP_ID)) {
-    if ($env:WECHAT_APP_ID -notmatch '^wx[0-9a-fA-F]{16}    throw "Expected WeChat compileType=game, found $($wechatProjectConfig.compileType)"
+    if ($env:WECHAT_APP_ID -notmatch '^wx[0-9a-fA-F]{16}
+if ([string]::IsNullOrWhiteSpace($wechatProjectConfig.appid)) {
+    throw 'The generated WeChat project.config.json has an empty AppID.'
 }
+if ($wechatProjectConfig.appid -eq 'wx6ac3f5090a6b99c5') {
+    Write-Warning 'The generated package still uses the default Cocos/WeChat AppID. Replace it with the official Mini Program AppID before publishing.'
+}
+
+$gameJsonPath = Join-Path $buildPath 'game.json'
+$gameJsonText = [System.IO.File]::ReadAllText($gameJsonPath, [System.Text.Encoding]::UTF8)
+$gameJson = $gameJsonText | ConvertFrom-Json
+if ($gameJson.deviceOrientation -ne 'portrait') {
+    throw "Expected WeChat deviceOrientation=portrait, found $($gameJson.deviceOrientation)"
+}
+
+$runtimeSettingsPath = Join-Path $buildPath 'src\settings.json'
+$runtimeSettingsJson = [System.IO.File]::ReadAllText($runtimeSettingsPath, [System.Text.Encoding]::UTF8)
+$runtimeSettings = $runtimeSettingsJson | ConvertFrom-Json
+$designResolution = $runtimeSettings.screen.designResolution
+if ($designResolution.width -ne 720 -or $designResolution.height -ne 1280) {
+    throw "Expected runtime design resolution 720x1280, found $($designResolution.width)x$($designResolution.height)"
+}
+
+$mainScriptPath = Join-Path $buildPath 'assets\main\index.js'
+$mainScript = Get-Content -LiteralPath $mainScriptPath -Raw
+if ($mainScript -notmatch 'PuckBattleBootstrap') {
+    throw 'PuckBattleBootstrap was not found in the compiled main script bundle.'
+}
+
+$mainConfigPath = Join-Path $buildPath 'assets\main\config.json'
+$mainConfig = Get-Content -LiteralPath $mainConfigPath -Raw
+if ($mainConfig -notmatch 'c14a2f70-6d83-4b95-a1e7-3c8f0d2b6a49') {
+    throw 'The compiled main bundle does not reference the Game.scene UUID.'
+}
+
+@(
+    ('Build output file count: ' + $buildFiles.Count)
+    ('WeChat compile type: ' + $wechatProjectConfig.compileType)
+    ('WeChat AppID: ' + $wechatProjectConfig.appid)
+    ('Device orientation: ' + $gameJson.deviceOrientation)
+    ('Runtime design resolution: ' + $designResolution.width + 'x' + $designResolution.height)
+    'Main script contains PuckBattleBootstrap: yes'
+    'Main bundle references Game.scene: yes'
+) | Add-Content -LiteralPath $summaryPath -Encoding UTF8
+
+Write-Host "WeChat Mini Game build completed. Output files: $($buildFiles.Count)"
+Write-Host "Build output: $buildPath"
+) {
+        throw 'WECHAT_APP_ID must be a valid 18-character WeChat Mini Program AppID.'
+    }
+    $wechatProjectConfig.appid = $env:WECHAT_APP_ID
+    $updatedConfig = $wechatProjectConfig | ConvertTo-Json -Depth 100 -Compress
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($wechatProjectConfigPath, $updatedConfig, $utf8NoBom)
+    $wechatProjectConfig = $updatedConfig | ConvertFrom-Json
+}
+
+if ($wechatProjectConfig.compileType -ne 'game') {
+    throw "Expected WeChat compileType=game, found $($wechatProjectConfig.compileType)"
+}
+if ([string]::IsNullOrWhiteSpace($wechatProjectConfig.appid)) {
+    throw 'The generated WeChat project.config.json has an empty AppID.'
+}
+if ($wechatProjectConfig.appid -eq 'wx6ac3f5090a6b99c5') {
+    Write-Warning 'The generated package still uses the default Cocos/WeChat AppID. Replace it with the official Mini Program AppID before publishing.'
+}
+
+$gameJsonPath = Join-Path $buildPath 'game.json'
+$gameJsonText = [System.IO.File]::ReadAllText($gameJsonPath, [System.Text.Encoding]::UTF8)
+$gameJson = $gameJsonText | ConvertFrom-Json
+if ($gameJson.deviceOrientation -ne 'portrait') {
+    throw "Expected WeChat deviceOrientation=portrait, found $($gameJson.deviceOrientation)"
+}
+
+$runtimeSettingsPath = Join-Path $buildPath 'src\settings.json'
+$runtimeSettingsJson = [System.IO.File]::ReadAllText($runtimeSettingsPath, [System.Text.Encoding]::UTF8)
+$runtimeSettings = $runtimeSettingsJson | ConvertFrom-Json
+$designResolution = $runtimeSettings.screen.designResolution
+if ($designResolution.width -ne 720 -or $designResolution.height -ne 1280) {
+    throw "Expected runtime design resolution 720x1280, found $($designResolution.width)x$($designResolution.height)"
+}
+
+$mainScriptPath = Join-Path $buildPath 'assets\main\index.js'
+$mainScript = Get-Content -LiteralPath $mainScriptPath -Raw
+if ($mainScript -notmatch 'PuckBattleBootstrap') {
+    throw 'PuckBattleBootstrap was not found in the compiled main script bundle.'
+}
+
+$mainConfigPath = Join-Path $buildPath 'assets\main\config.json'
+$mainConfig = Get-Content -LiteralPath $mainConfigPath -Raw
+if ($mainConfig -notmatch 'c14a2f70-6d83-4b95-a1e7-3c8f0d2b6a49') {
+    throw 'The compiled main bundle does not reference the Game.scene UUID.'
+}
+
+@(
+    ('Build output file count: ' + $buildFiles.Count)
+    ('WeChat compile type: ' + $wechatProjectConfig.compileType)
+    ('WeChat AppID: ' + $wechatProjectConfig.appid)
+    ('Device orientation: ' + $gameJson.deviceOrientation)
+    ('Runtime design resolution: ' + $designResolution.width + 'x' + $designResolution.height)
+    'Main script contains PuckBattleBootstrap: yes'
+    'Main bundle references Game.scene: yes'
+) | Add-Content -LiteralPath $summaryPath -Encoding UTF8
+
+Write-Host "WeChat Mini Game build completed. Output files: $($buildFiles.Count)"
+Write-Host "Build output: $buildPath"
+) {
+        throw 'WECHAT_APP_ID must be a valid 18-character WeChat Mini Program AppID.'
+    }
+    $wechatProjectConfig.appid = $env:WECHAT_APP_ID
+    $updatedConfig = $wechatProjectConfig | ConvertTo-Json -Depth 100 -Compress
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($wechatProjectConfigPath, $updatedConfig, $utf8NoBom)
+    $wechatProjectConfig = $updatedConfig | ConvertFrom-Json
+}
+if ($wechatProjectConfig.compileType -ne 'game') {
 if ([string]::IsNullOrWhiteSpace($wechatProjectConfig.appid)) {
     throw 'The generated WeChat project.config.json has an empty AppID.'
 }
