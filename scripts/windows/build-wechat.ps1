@@ -188,7 +188,22 @@ $wechatProjectConfig = $wechatProjectConfigJson | ConvertFrom-Json
 
 # Optional repository variable: WECHAT_APP_ID. Leave unset for the Cocos preview AppID.
 if (-not [string]::IsNullOrWhiteSpace($env:WECHAT_APP_ID)) {
-    if ($env:WECHAT_APP_ID -notmatch '^wx[0-9a-fA-F]{16}
+    $candidateAppId = $env:WECHAT_APP_ID.Trim()
+    if ($candidateAppId.Length -ne 18 -or -not $candidateAppId.StartsWith('wx')) {
+        throw 'WECHAT_APP_ID must be a valid 18-character WeChat Mini Program AppID.'
+    }
+    $appIdHex = $candidateAppId.Substring(2)
+    foreach ($character in $appIdHex.ToCharArray()) {
+        if ('0123456789abcdefABCDEF'.IndexOf($character) -lt 0) {
+            throw 'WECHAT_APP_ID must contain only hexadecimal characters after wx.'
+        }
+    }
+    $wechatProjectConfig.appid = $candidateAppId
+    $updatedConfig = $wechatProjectConfig | ConvertTo-Json -Depth 100 -Compress
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($wechatProjectConfigPath, $updatedConfig, $utf8NoBom)
+    $wechatProjectConfig = $updatedConfig | ConvertFrom-Json
+}
 if ([string]::IsNullOrWhiteSpace($wechatProjectConfig.appid)) {
     throw 'The generated WeChat project.config.json has an empty AppID.'
 }
