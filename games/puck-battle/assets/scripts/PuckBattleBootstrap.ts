@@ -815,18 +815,18 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private confirmWord(): void {
-    const definition = this.wordPuzzle.confirmSelection();
-    if (!definition) {
-      if (this.wordPreviewLabel) {
-        this.wordPreviewLabel.string = '暂未收录这个词语，请重新选择';
-      }
-      return;
-    }
-
     if (!this.physicsReady) {
       if (this.warningLabel) {
         this.warningLabel.node.active = true;
         this.warningLabel.string = '请先启用 2D Physics / Box2D';
+      }
+      return;
+    }
+
+    const definition = this.wordPuzzle.confirmSelection();
+    if (!definition) {
+      if (this.wordPreviewLabel) {
+        this.wordPreviewLabel.string = '暂未收录这个词语，请重新选择';
       }
       return;
     }
@@ -1136,7 +1136,6 @@ export class PuckBattleBootstrap extends Component {
 
     this.shotsFired += 1;
     this.recalculateActiveScores();
-    this.bestScore = SaveManager.saveBestScore(this.totalScore);
     this.currentPuck = null;
     this.currentAmmo = null;
     this.updateHud();
@@ -1173,7 +1172,7 @@ export class PuckBattleBootstrap extends Component {
     this.setWordPanelVisible(false);
     if (this.ammoLabel) this.ammoLabel.node.active = false;
 
-    const newBest = this.totalScore >= this.bestScore;
+    const newBest = this.totalScore > this.bestScore;
     this.bestScore = SaveManager.saveBestScore(this.totalScore);
 
     if (this.resultLabel) {
