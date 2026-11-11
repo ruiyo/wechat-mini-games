@@ -187,6 +187,13 @@ export class PuckBattleBootstrap extends Component {
   update(deltaTime: number): void {
     if (!this.physicsReady) return;
 
+    if (
+      this.state !== GameState.FLYING &&
+      this.state !== GameState.SETTLING
+    ) {
+      return;
+    }
+
     for (const puck of this.pucks) {
       AmmoEffectController.updateFlight(
         puck.body,
@@ -196,13 +203,6 @@ export class PuckBattleBootstrap extends Component {
         this.scoreRadii.outer,
         deltaTime,
       );
-    }
-
-    if (
-      this.state !== GameState.FLYING &&
-      this.state !== GameState.SETTLING
-    ) {
-      return;
     }
 
     this.shotElapsed += deltaTime;
