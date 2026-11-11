@@ -49,7 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build WeChat Mini Game with Cocos Creator
-        shell: pwsh
+        shell: powershell
         env:
           COCOS_CREATOR_PATH: ${{ vars.COCOS_CREATOR_PATH }}
         run: |
