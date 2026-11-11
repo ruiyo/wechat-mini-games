@@ -21,7 +21,6 @@ if ($package.creator.version -ne '3.8.8') {
     throw "Expected Cocos Creator 3.8.8, found $($package.creator.version)"
 }
 
-# Cocos settings must live inside the actual project root, beside assets/package.json.
 $engineSettingsPath = Join-Path $ProjectPath 'settings\v2\packages\engine.json'
 $projectSettingsPath = Join-Path $ProjectPath 'settings\v2\packages\project.json'
 $scenePath = Join-Path $ProjectPath 'assets\scenes\Game.scene'
@@ -48,8 +47,28 @@ $stdoutPath = Join-Path $runnerTemp 'cocos-build.stdout.log'
 $stderrPath = Join-Path $runnerTemp 'cocos-build.stderr.log'
 $cliLogPath = Join-Path $runnerTemp 'cocos-creator-cli.log'
 $summaryPath = Join-Path $runnerTemp 'cocos-build.log'
-$buildPath = Join-Path $ProjectPath 'build\ci-wechatgame'
-$buildArgs = "platform=wechatgame;debug=true;orientation=portrait;buildPath=build/ci-wechatgame;logDest=$cliLogPath"
+$configPath = Join-Path $PSScriptRoot 'wechat-build-config.json'
+$buildOutputRoot = Join-Path $ProjectPath 'build'
+$buildPath = Join-Path $buildOutputRoot 'ci-wechatgame'
+
+if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+    throw "Cocos build configuration is missing: $configPath"
+}
+$buildConfig = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+if ($buildConfig.platform -ne 'wechatgame') {
+    throw 'The Cocos build config must target platform=wechatgame.'
+}
+if (-not ($buildConfig.debug -is [bool])) {
+    throw 'The Cocos build config debug field must be a JSON boolean.'
+}
+if ($buildConfig.buildPath -ne 'project://build') {
+    throw 'The Cocos build config must use buildPath=project://build.'
+}
+if ($buildConfig.outputName -ne 'ci-wechatgame') {
+    throw 'The Cocos build config must use outputName=ci-wechatgame.'
+}
+
+$buildArgs = "configPath=$configPath;logDest=$cliLogPath"
 
 @(
     'Word Puck Cocos Creator build diagnostics'
@@ -60,11 +79,12 @@ $buildArgs = "platform=wechatgame;debug=true;orientation=portrait;buildPath=buil
     ('Creator version expected: 3.8.8')
     ('Project root: ' + $ProjectPath)
     ('Project settings: ' + $engineSettingsPath)
+    ('Build config: ' + $configPath)
+    ('Build output: ' + $buildPath)
     ('Runner temp: ' + $runnerTemp)
     ('Build arguments: ' + $buildArgs)
 ) | Set-Content -LiteralPath $summaryPath -Encoding UTF8
 
-# Record existing editor processes for diagnostics. Do not terminate the user's editor.
 try {
     $creatorProcesses = @(Get-CimInstance Win32_Process -Filter "Name='CocosCreator.exe'" |
         Select-Object ProcessId, ParentProcessId, CommandLine)
@@ -88,6 +108,8 @@ Write-Host "Running as: $(& whoami)"
 Write-Host "User profile: $env:USERPROFILE"
 Write-Host "Cocos Creator: $CreatorPath"
 Write-Host "Project: $ProjectPath"
+Write-Host "Build config: $configPath"
+Write-Host "Build output: $buildPath"
 Write-Host "Build log: $summaryPath"
 
 $argumentList = @(
@@ -129,12 +151,19 @@ if ($exitCode -notin @(0, 36)) {
     throw "Cocos Creator build failed with exit code $exitCode. See $summaryPath and $cliLogPath"
 }
 if (-not (Test-Path -LiteralPath $buildPath -PathType Container)) {
+    $fallbackPath = Join-Path $buildOutputRoot 'wechatgame'
+    if (Test-Path -LiteralPath $fallbackPath -PathType Container) {
+        throw "Build was generated in the fallback directory $fallbackPath. Check the committed build config and Cocos Creator CLI output."
+    }
     throw "Cocos Creator exited successfully but build output is missing: $buildPath"
 }
+
 $buildFiles = @(Get-ChildItem -LiteralPath $buildPath -File -Recurse)
 if ($buildFiles.Count -eq 0) {
     throw "Cocos Creator build output is empty: $buildPath"
 }
 
+('Build output file count: ' + $buildFiles.Count) |
+    Add-Content -LiteralPath $summaryPath -Encoding UTF8
 Write-Host "WeChat Mini Game build completed. Output files: $($buildFiles.Count)"
 Write-Host "Build output: $buildPath"

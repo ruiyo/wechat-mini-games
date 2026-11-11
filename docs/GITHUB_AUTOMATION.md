@@ -36,37 +36,40 @@ Cocos 项目根目录是 games/puck-battle。所有 Cocos 项目设置必须位�
 - games/puck-battle/settings/v2/packages/engine.json
 - games/puck-battle/settings/v2/packages/project.json
 
-不要把 settings 放在仓库根目录。验证脚本和构建脚本均检查项目根目录内的 settings。
-
 入口场景：
 - games/puck-battle/assets/scenes/Game.scene
 - games/puck-battle/assets/scenes/Game.scene.meta
 
 场景包含 Canvas、UI Camera、UITransform、Canvas、Widget 和 PuckBattleBootstrap 组件。engine.json 包含 physics-2d-box2d 模块。
 
-## 自动构建
+## 自动构建参数
 
-构建参数：
+构建配置文件：
 
-    CocosCreator.exe --project PROJECT_PATH --build "platform=wechatgame;debug=true;orientation=portrait;buildPath=build/ci-wechatgame"
+- scripts/windows/wechat-build-config.json
 
-Cocos Creator 官方命令行构建文档说明：
+使用 JSON 类型保存 debug 布尔值，避免 CLI 将 debug=true 解析成字符串。输出路径使用 Cocos Creator 支持的 project://build，输出文件夹名由 outputName=ci-wechatgame 指定。
+
+实际构建命令由 scripts/windows/build-wechat.ps1 执行：
+
+    CocosCreator.exe --project PROJECT_PATH --build "configPath=CONFIG_JSON;logDest=CLI_LOG"
+
+预期构建目录：
+
+    games/puck-battle/build/ci-wechatgame
+
+Cocos Creator 官方命令行构建退出码：
 - 32：构建参数无效
 - 34：构建过程失败
 - 36：构建成功
 
-GitHub Actions job 最长运行 30 分钟。构建脚本会记录：
-- Windows 运行身份和 USERPROFILE
-- Cocos Creator 路径与项目路径
-- 已运行的 CocosCreator.exe 进程
-- 标准输出、标准错误和 Cocos 内部日志
-- 进程退出码和输出目录检查
+构建脚本会记录 Windows 身份、USERPROFILE、Cocos Creator 路径、项目路径、标准输出、标准错误、引擎内部日志和输出文件数量。GitHub Actions job 最长运行 30 分钟。
 
 ## 构建产物
 
 构建目录：games/puck-battle/build/ci-wechatgame
 
-Actions artifact：word-puck-wechat-build，保留 14 天。失败时也会尝试上传日志。
+Actions artifact：word-puck-wechat-build，保留 14 天。失败时也会尝试上传诊断日志。
 
 ## 安全边界
 
