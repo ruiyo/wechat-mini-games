@@ -1,6 +1,6 @@
 # 微信小游戏开发仓库
 
-当前优先项目已从《冰壶碰碰局》基础原型升级为 **《词弹碰碰局》**：汉字组词决定弹药，弹药效果影响物理弹射，无尽模式持续挑战最高分。
+当前优先项目为 **《词弹碰碰局》**：汉字组词决定弹药，弹药效果影响物理弹射，无尽模式持续挑战最高分。
 
 ## 项目
 
@@ -9,7 +9,7 @@
 
 ## 技术选型
 
-- Cocos Creator 3.8.x
+- Cocos Creator 3.8.8
 - TypeScript
 - Cocos Creator 2D Physics / Box2D
 - 微信小游戏
@@ -21,6 +21,13 @@
 - [技术设计](docs/TECHNICAL_DESIGN_PUCK_BATTLE.md)
 - [MVP 开发计划](docs/MVP_PLAN.md)
 - [《传送带调度员》设计概要](docs/GDD_CONVEYOR_DISPATCHER.md)
+- [GitHub 自动构建配置](docs/GITHUB_AUTOMATION.md)
+
+## 自动化
+
+- GitHub Actions 自动运行项目结构检查和 TypeScript 逻辑测试。
+- 配置 Windows self-hosted runner 后，Actions 可自动调用本机 Cocos Creator 3.8.8 构建微信小游戏。
+- 未配置 runner 时，逻辑测试仍会在 GitHub 云端运行。
 
 ## 当前开发分支
 

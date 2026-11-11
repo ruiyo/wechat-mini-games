@@ -2,7 +2,7 @@
   "name": "puck-battle",
   "uuid": "d9b1d6a4-8b9f-4b42-9c1c-3a0a9c0d38f1",
   "creator": {
-    "version": "3.8.0"
+    "version": "3.8.8"
   },
-  "description": "A casual top-down puck sliding game prototype for WeChat Mini Games."
+  "description": "Word crafting and physics shooting endless game prototype for WeChat Mini Games."
 }

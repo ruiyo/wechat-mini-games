@@ -1,0 +1,77 @@
+name: Word Puck CI and WeChat Build
+
+on:
+  push:
+    branches:
+      - feature/puck-battle-prototype
+    paths:
+      - "games/puck-battle/**"
+      - "tests/**"
+      - "scripts/**"
+      - ".github/workflows/**"
+      - "docs/GITHUB_AUTOMATION.md"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "games/puck-battle/**"
+      - "tests/**"
+      - "scripts/**"
+      - ".github/workflows/**"
+      - "docs/GITHUB_AUTOMATION.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  logic-validation:
+    name: Logic tests and project validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate Cocos project structure
+        run: node scripts/validate-project.mjs
+
+      - name: Run logic unit tests
+        run: npx --yes tsx@4.20.6 --test tests/logic/*.test.ts
+
+  cocos-wechat-build:
+    name: Cocos Creator 3.8.8 WeChat build
+    needs: logic-validation
+    # Never run a self-hosted Windows runner for fork pull requests.
+    # Enable only after the trusted, interactive Windows runner is registered.
+    if: ${{ vars.ENABLE_COCOS_BUILD == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    runs-on: [self-hosted, Windows, X64, cocos-creator]
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build WeChat Mini Game with Cocos Creator
+        shell: pwsh
+        env:
+          COCOS_CREATOR_PATH: ${{ vars.COCOS_CREATOR_PATH }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $projectPath = Join-Path $env:GITHUB_WORKSPACE 'games\puck-battle'
+          $buildScript = Join-Path $env:GITHUB_WORKSPACE 'scripts\windows\build-wechat.ps1'
+          & $buildScript -CreatorPath $env:COCOS_CREATOR_PATH -ProjectPath $projectPath
+
+      - name: Upload build and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: word-puck-wechat-build
+          path: |
+            games/puck-battle/build/**
+            ${{ runner.temp }}\cocos-build.log
+          if-no-files-found: warn
+          retention-days: 14

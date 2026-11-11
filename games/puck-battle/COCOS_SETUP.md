@@ -1,34 +1,26 @@
-# Cocos Creator 工程启动说明
+# Cocos Creator 3.8.8 工程启动与自动构建
 
 ## 环境
 
-- Cocos Creator 3.8.x
-- 微信开发者工具（用于微信小游戏构建和预览）
+- Cocos Creator 3.8.8
+- 微信开发者工具（用于最终预览和真机验证）
 
-## 打开工程
+## 首次导入和场景初始化
 
-1. 克隆仓库。
-2. 在 Cocos Creator Dashboard 中选择「导入项目」。
-3. 选择本目录：games/puck-battle。
-4. 等待编辑器导入 TypeScript 脚本并生成 meta 文件。
+1. 在 Cocos Creator Dashboard 中导入本目录：`games/puck-battle`。
+2. 等待编辑器导入 TypeScript 脚本并生成 meta 文件。
+3. 在 `assets/scenes` 新建 `Game.scene`。
+4. 确认场景中有 Canvas 和 UI Camera。
+5. 选中 Canvas，在 Inspector 中添加 `PuckBattleBootstrap` 组件。
+6. 保存场景，并将场景文件及其 .meta 文件提交到 Git。
 
-## 创建首个场景
-
-1. 在 Cocos Creator 中新建一个 2D Scene，保存为 assets/scenes/Game.scene。
-2. 确认场景中有 Canvas 和 UI Camera。
-3. 选中 Canvas 节点，在 Inspector 中添加脚本组件 PuckBattleBootstrap。
-4. 保存场景，将 Game.scene 作为预览启动场景。
-
-PuckBattleBootstrap 会在运行时自动创建背景、场地、目标圈、边界、弹性机关、汉字卡片、弹药和 HUD。
+`PuckBattleBootstrap` 会在运行时自动创建背景、场地、目标圈、边界、弹性机关、汉字卡片、弹药和 HUD。
 
 ## 启用 Box2D
 
 1. 打开「项目 -> 项目设置 -> 功能裁剪」。
 2. 找到 2D Physics，启用 Box2D 后端。
 3. 应用设置并等待编辑器重新编译。
-4. 重新预览场景。
-
-如果未启用 Box2D，运行时会显示提示，不会开始发射。
 
 ## 操作
 
@@ -39,17 +31,16 @@ PuckBattleBootstrap 会在运行时自动创建背景、场地、目标圈、边
 5. 结算后继续组词和发射。
 6. 连续失误达到 5 次后本局结束，点击屏幕重新开始。
 
-## 当前原型范围
+## 自动构建
 
-- 无尽模式。
-- 24 个双字词的本地词典。
-- 4 种弹药效果。
-- 最近 3 颗弹药保留和碰撞。
-- 三层目标区计分。
-- 连击、失误值和本地最高分/词语记录。
+完成一次场景初始化后，不需要每次打开 Cocos Creator：
+
+- GitHub Actions 在推送代码后运行逻辑测试。
+- 配置 Windows self-hosted runner 后，自动调用本机 Cocos Creator 3.8.8 构建微信小游戏。
+- 详细配置见 `docs/GITHUB_AUTOMATION.md`。
 
 ## 注意
 
-- Cocos Creator 会在首次导入时生成 meta 文件，应该将生成的 meta 文件提交到 Git。
+- Cocos Creator 首次导入会生成 .meta 文件，应该将这些文件提交到 Git。
 - temp、library、local 和 build 是编辑器或构建产物，不应提交。
-- 当前代码尚未经过本地 Cocos Creator 编译和微信真机验证；请在对应编辑器版本中运行后，根据日志继续修复和调整物理手感。
+- 自动构建成功不代表已经完成微信真机体验测试；触摸、物理手感和微信兼容性仍需在模拟器或设备上验证。
