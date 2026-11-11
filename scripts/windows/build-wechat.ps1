@@ -163,7 +163,54 @@ if ($buildFiles.Count -eq 0) {
     throw "Cocos Creator build output is empty: $buildPath"
 }
 
-('Build output file count: ' + $buildFiles.Count) |
-    Add-Content -LiteralPath $summaryPath -Encoding UTF8
+$requiredOutputs = @(
+    'game.js',
+    'game.json',
+    'project.config.json',
+    'application.js',
+    'engine-adapter.js',
+    'cocos-js\cc.js',
+    'assets\main\index.js',
+    'assets\main\config.json'
+)
+foreach ($relativeOutput in $requiredOutputs) {
+    $outputFile = Join-Path $buildPath $relativeOutput
+    if (-not (Test-Path -LiteralPath $outputFile -PathType Leaf)) {
+        throw "Required WeChat build output is missing: $outputFile"
+    }
+}
+
+$wechatProjectConfigPath = Join-Path $buildPath 'project.config.json'
+$wechatProjectConfig = Get-Content -LiteralPath $wechatProjectConfigPath -Raw | ConvertFrom-Json
+if ($wechatProjectConfig.compileType -ne 'game') {
+    throw "Expected WeChat compileType=game, found $($wechatProjectConfig.compileType)"
+}
+if ([string]::IsNullOrWhiteSpace($wechatProjectConfig.appid)) {
+    throw 'The generated WeChat project.config.json has an empty AppID.'
+}
+if ($wechatProjectConfig.appid -eq 'wx6ac3f5090a6b99c5') {
+    Write-Warning 'The generated package still uses the default Cocos/WeChat AppID. Replace it with the official Mini Program AppID before publishing.'
+}
+
+$mainScriptPath = Join-Path $buildPath 'assets\main\index.js'
+$mainScript = Get-Content -LiteralPath $mainScriptPath -Raw
+if ($mainScript -notmatch 'PuckBattleBootstrap') {
+    throw 'PuckBattleBootstrap was not found in the compiled main script bundle.'
+}
+
+$mainConfigPath = Join-Path $buildPath 'assets\main\config.json'
+$mainConfig = Get-Content -LiteralPath $mainConfigPath -Raw
+if ($mainConfig -notmatch 'c14a2f70-6d83-4b95-a1e7-3c8f0d2b6a49') {
+    throw 'The compiled main bundle does not reference the Game.scene UUID.'
+}
+
+@(
+    ('Build output file count: ' + $buildFiles.Count)
+    ('WeChat compile type: ' + $wechatProjectConfig.compileType)
+    ('WeChat AppID: ' + $wechatProjectConfig.appid)
+    'Main script contains PuckBattleBootstrap: yes'
+    'Main bundle references Game.scene: yes'
+) | Add-Content -LiteralPath $summaryPath -Encoding UTF8
+
 Write-Host "WeChat Mini Game build completed. Output files: $($buildFiles.Count)"
 Write-Host "Build output: $buildPath"
