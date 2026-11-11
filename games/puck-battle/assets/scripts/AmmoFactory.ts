@@ -1,4 +1,4 @@
-import { AmmoType, WordDefinition } from './WordDictionary';
+import type { AmmoType, WordDefinition } from './WordDictionary';
 
 export interface AmmoDefinition {
   word: string;

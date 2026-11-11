@@ -38,7 +38,7 @@ export const WORD_DEFINITIONS: WordDefinition[] = [
 ];
 
 const WORD_MAP = new Map<string, WordDefinition>(
-  WORD_DEFINITIONS.map((definition) => [definition.word, definition]),
+  WORD_DEFINITIONS.map((definition): [string, WordDefinition] => [definition.word, definition]),
 );
 
 export function findWord(first: string, second: string): WordDefinition | null {

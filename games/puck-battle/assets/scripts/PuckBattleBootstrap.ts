@@ -18,7 +18,8 @@ import {
 } from 'cc';
 
 import { PUCK_CONFIG, WORD_UI_CONFIG } from './GameConfig';
-import { AmmoDefinition, AmmoFactory } from './AmmoFactory';
+import { AmmoFactory } from './AmmoFactory';
+import type { AmmoDefinition } from './AmmoFactory';
 import { AmmoEffectController } from './AmmoEffectController';
 import { distanceBetween, scoreByDistance } from './ScoreRules';
 import { SaveManager } from './SaveManager';
@@ -831,9 +832,10 @@ export class PuckBattleBootstrap extends Component {
       return;
     }
 
-    this.currentAmmo = AmmoFactory.create(definition);
+    const ammo = AmmoFactory.create(definition);
+    this.currentAmmo = ammo;
     this.discoveredWordCount = SaveManager.recordDiscoveredWord(definition.word).length;
-    this.spawnPuck(this.currentAmmo);
+    this.spawnPuck(ammo);
     this.state = GameState.READY;
     this.showAmmoState();
     this.updateHud();

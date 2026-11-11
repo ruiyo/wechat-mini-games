@@ -1,8 +1,8 @@
 import {
   findWord,
   getRandomWordDefinition,
-  WordDefinition,
 } from './WordDictionary';
+import type { WordDefinition } from './WordDictionary';
 
 const INITIAL_LETTER_PACKS: string[][] = [
   ['弹', '跳', '磁', '吸', '冰', '冻'],

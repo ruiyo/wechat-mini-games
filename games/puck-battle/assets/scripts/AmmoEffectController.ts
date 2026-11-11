@@ -1,5 +1,5 @@
 import { CircleCollider2D, Node, RigidBody2D, Vec2 } from 'cc';
-import { AmmoDefinition } from './AmmoFactory';
+import type { AmmoDefinition } from './AmmoFactory';
 
 export class AmmoEffectController {
   static applyToPuck(
