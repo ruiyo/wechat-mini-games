@@ -59,6 +59,13 @@ if (!canvas._components.some((ref) => objects[ref.__id__].__type__ === 'cc.Canva
 if (!canvas._components.some((ref) => objects[ref.__id__].__type__ === 'cc.UITransform')) {
   throw new Error('UITransform component missing');
 }
+const canvasIndex = objects.indexOf(canvas);
+const canvasTransform = objects.find((item) =>
+  item.__type__ === 'cc.UITransform' && item.node && item.node.__id__ === canvasIndex
+);
+if (!canvasTransform || canvasTransform._contentSize.width !== 720 || canvasTransform._contentSize.height !== 1280) {
+  throw new Error('Canvas UITransform must use the 720x1280 portrait design size');
+}
 
 const scriptMeta = JSON.parse(data.get(projectRoot + '/assets/scripts/PuckBattleBootstrap.ts.meta'));
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -86,6 +93,13 @@ const projectSettings = JSON.parse(data.get(projectRoot + '/settings/v2/packages
 if (!projectSettings.general || !projectSettings.general.designResolution) {
   throw new Error('Cocos project settings are missing general.designResolution');
 }
+const designResolution = projectSettings.general.designResolution;
+if (designResolution.width !== 720 || designResolution.height !== 1280) {
+  throw new Error('Cocos project design resolution must be 720x1280 portrait');
+}
+if (designResolution.fitHeight !== true || designResolution.fitWidth !== false) {
+  throw new Error('Cocos project must use fitHeight=true and fitWidth=false');
+}
 
 const source = data.get(projectRoot + '/assets/scripts/WordDictionary.ts');
 const words = [...source.matchAll(/\{ word: '([^']+)'/g)].map((m) => m[1]);
@@ -98,6 +112,7 @@ if (new Set(words).size !== words.length) throw new Error('Dictionary has duplic
 console.log('Project validation passed.');
 console.log('Cocos Creator: 3.8.8');
 console.log('Project root: ' + projectRoot);
+console.log('Design resolution: 720x1280 portrait, fit height');
 console.log('Dictionary entries: ' + words.length);
 console.log('Game.scene: Canvas + PuckBattleBootstrap');
 console.log('Box2D module: included in project settings');

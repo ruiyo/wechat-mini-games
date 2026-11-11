@@ -195,6 +195,21 @@ if ($wechatProjectConfig.appid -eq 'wx6ac3f5090a6b99c5') {
     Write-Warning 'The generated package still uses the default Cocos/WeChat AppID. Replace it with the official Mini Program AppID before publishing.'
 }
 
+$gameJsonPath = Join-Path $buildPath 'game.json'
+$gameJsonText = [System.IO.File]::ReadAllText($gameJsonPath, [System.Text.Encoding]::UTF8)
+$gameJson = $gameJsonText | ConvertFrom-Json
+if ($gameJson.deviceOrientation -ne 'portrait') {
+    throw "Expected WeChat deviceOrientation=portrait, found $($gameJson.deviceOrientation)"
+}
+
+$runtimeSettingsPath = Join-Path $buildPath 'src\settings.json'
+$runtimeSettingsJson = [System.IO.File]::ReadAllText($runtimeSettingsPath, [System.Text.Encoding]::UTF8)
+$runtimeSettings = $runtimeSettingsJson | ConvertFrom-Json
+$designResolution = $runtimeSettings.screen.designResolution
+if ($designResolution.width -ne 720 -or $designResolution.height -ne 1280) {
+    throw "Expected runtime design resolution 720x1280, found $($designResolution.width)x$($designResolution.height)"
+}
+
 $mainScriptPath = Join-Path $buildPath 'assets\main\index.js'
 $mainScript = Get-Content -LiteralPath $mainScriptPath -Raw
 if ($mainScript -notmatch 'PuckBattleBootstrap') {
@@ -211,6 +226,8 @@ if ($mainConfig -notmatch 'c14a2f70-6d83-4b95-a1e7-3c8f0d2b6a49') {
     ('Build output file count: ' + $buildFiles.Count)
     ('WeChat compile type: ' + $wechatProjectConfig.compileType)
     ('WeChat AppID: ' + $wechatProjectConfig.appid)
+    ('Device orientation: ' + $gameJson.deviceOrientation)
+    ('Runtime design resolution: ' + $designResolution.width + 'x' + $designResolution.height)
     'Main script contains PuckBattleBootstrap: yes'
     'Main bundle references Game.scene: yes'
 ) | Add-Content -LiteralPath $summaryPath -Encoding UTF8

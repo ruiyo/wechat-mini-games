@@ -34,7 +34,7 @@ ENABLE_COCOS_BUILD 不再使用；可信分支 push 会自动构建。
 Cocos 项目根目录是 games/puck-battle。所有 Cocos 项目设置必须位于这个目录内部：
 
 - games/puck-battle/settings/v2/packages/engine.json
-- games/puck-battle/settings/v2/packages/project.json
+- games/puck-battle/settings/v2/packages/project.json (720x1280 portrait, fitHeight=true)
 
 入口场景：
 - games/puck-battle/assets/scenes/Game.scene
@@ -64,6 +64,8 @@ Cocos Creator 官方命令行构建退出码：
 - 36：构建成功
 
 构建脚本会记录 Windows 身份、USERPROFILE、Cocos Creator 路径、项目路径、标准输出、标准错误、引擎内部日志和输出文件数量。GitHub Actions job 最长运行 30 分钟。
+
+构建后还会验证 `game.json` 的 portrait 方向，以及 `src/settings.json` 中的 720x1280 竖屏设计分辨率，避免竖屏小游戏误生成横屏布局。
 
 ## 构建产物
 

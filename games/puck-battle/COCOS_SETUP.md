@@ -2,7 +2,7 @@
 
 ## 项目根目录
 
-本 Cocos Creator 项目根目录是 games/puck-battle。该目录包含 package.json、assets、settings 和 tsconfig.json。
+本 Cocos Creator 项目根目录是 games/puck-battle。该目录包含 package.json、assets、settings 和 tsconfig.json。项目采用 720x1280 竖屏设计分辨率，并按高度适配不同手机屏幕。
 
 项目设置位于：
 - settings/v2/packages/engine.json

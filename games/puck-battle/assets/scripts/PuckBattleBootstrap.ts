@@ -73,6 +73,7 @@ export class PuckBattleBootstrap extends Component {
   private comboStreak = 0;
   private missCount = 0;
   private discoveredWordCount = 0;
+  private runDiscoveredWords = new Set<string>();
 
   private isDragging = false;
   private dragStart = new Vec2();
@@ -112,6 +113,8 @@ export class PuckBattleBootstrap extends Component {
       rootTransform = this.node.addComponent(UITransform);
     }
     rootTransform.setContentSize(this.screenWidth, this.screenHeight);
+    // Keep the Canvas origin centered after device resolution adaptation.
+    this.node.setPosition(this.screenWidth / 2, this.screenHeight / 2, 0);
 
     this.arenaWidth = Math.min(
       this.screenWidth * PUCK_CONFIG.arenaWidthRatio,
@@ -156,7 +159,7 @@ export class PuckBattleBootstrap extends Component {
     this.createWordPanel();
 
     this.bestScore = SaveManager.getBestScore();
-    this.discoveredWordCount = SaveManager.getDiscoveredWords().length;
+    this.discoveredWordCount = 0;
     this.updateHud();
 
     this.node.on(Node.EventType.TOUCH_START, this.onTouchStart, this);
@@ -484,6 +487,17 @@ export class PuckBattleBootstrap extends Component {
 
   private createHud(): void {
     const topY = this.screenHeight * 0.445;
+
+    this.addLabel(
+      'GameTitleLabel',
+      '词弹碰碰局',
+      0,
+      this.screenHeight * 0.46,
+      30,
+      new Color(43, 91, 130, 255),
+      this.screenWidth * 0.9,
+      42,
+    );
 
     this.scoreLabel = this.addLabel(
       'ScoreLabel',
@@ -835,7 +849,9 @@ export class PuckBattleBootstrap extends Component {
 
     const ammo = AmmoFactory.create(definition);
     this.currentAmmo = ammo;
-    this.discoveredWordCount = SaveManager.recordDiscoveredWord(definition.word).length;
+    this.runDiscoveredWords.add(definition.word);
+    SaveManager.recordDiscoveredWord(definition.word);
+    this.discoveredWordCount = this.runDiscoveredWords.size;
     this.spawnPuck(ammo);
     this.state = GameState.READY;
     this.showAmmoState();
@@ -1194,7 +1210,7 @@ export class PuckBattleBootstrap extends Component {
         '本局得分  ' + this.totalScore +
         (newBest ? '\n新纪录！' : '') +
         '\n发射次数：' + this.shotsFired +
-        '\n发现词语：' + this.discoveredWordCount +
+        '\n本局发现词语：' + this.discoveredWordCount +
         '\n\n点击屏幕重新开始';
       this.resultLabel.node.active = true;
       this.resultLabel.node.setSiblingIndex(this.node.children.length - 1);
@@ -1220,6 +1236,8 @@ export class PuckBattleBootstrap extends Component {
     this.bankedScore = 0;
     this.comboStreak = 0;
     this.missCount = 0;
+    this.discoveredWordCount = 0;
+    this.runDiscoveredWords.clear();
     this.settleElapsed = 0;
     this.shotElapsed = 0;
     this.isDragging = false;
@@ -1243,7 +1261,13 @@ export class PuckBattleBootstrap extends Component {
       this.bestLabel.string = '最高纪录 ' + this.bestScore;
     }
     if (this.comboLabel) {
-      this.comboLabel.string = '连击 ×' + this.comboStreak;
+      const multiplier = Math.min(
+        1 + Math.max(0, this.comboStreak - 1) * PUCK_CONFIG.comboStep,
+        PUCK_CONFIG.maxComboMultiplier,
+      );
+      this.comboLabel.string = this.comboStreak > 0
+        ? '连击 ' + this.comboStreak + '  ×' + multiplier.toFixed(2)
+        : '连击待触发';
     }
     if (this.missLabel) {
       this.missLabel.string = '失误 ' + this.missCount + '/' + PUCK_CONFIG.maxMisses;
@@ -1252,6 +1276,8 @@ export class PuckBattleBootstrap extends Component {
 
   private startRun(): void {
     this.wordPuzzle.reset();
+    this.runDiscoveredWords.clear();
+    this.discoveredWordCount = 0;
     this.shotsFired = 0;
     this.totalScore = 0;
     this.bankedScore = 0;

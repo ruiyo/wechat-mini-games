@@ -25,12 +25,21 @@ test('word lookup accepts both character orders', () => {
   assert.equal(findWord('弹', '磁'), null);
 });
 
-test('every initial letter pack has six characters and at least one valid word', () => {
+test('every initial letter pack has six characters and at least three valid word choices', () => {
   const puzzle = new WordPuzzleController();
 
   for (let i = 0; i < 100; i += 1) {
     puzzle.reset();
-    assert.equal(puzzle.getLetters().length, 6);
+    const letters = puzzle.getLetters();
+    assert.equal(letters.length, 6);
+
+    let validWordCount = 0;
+    for (let first = 0; first < letters.length; first += 1) {
+      for (let second = first + 1; second < letters.length; second += 1) {
+        if (findWord(letters[first], letters[second])) validWordCount += 1;
+      }
+    }
+    assert.ok(validWordCount >= 3, 'each starting pack should offer at least three meaningful word choices');
     assert.equal(puzzle.hasValidWord(), true);
   }
 });
