@@ -103,8 +103,9 @@ enum GameState {
 
 ## 8. 连击和失误
 
-- 当前弹药命中目标：comboStreak +1，missCount -1（最低为0）。
-- 未命中：comboStreak 清零，missCount +1。
+- 当前弹药命中目标，或本次碰撞使活动弹药总分相较发射前增加：comboStreak +1，missCount -1（最低为0）。
+- 当前弹药未命中且活动弹药总分没有增加：comboStreak 清零，missCount +1。
+- 发射前记录 scoreBeforeShot；所有活动弹药稳定后重新计分，以 scoreDelta 判断碰撞推动旧弹药产生的有效收益。
 - comboMultiplier = min(1 + (comboStreak - 1) × comboStep, maxComboMultiplier)。
 - 失误达到配置上限后结束本局。
 
