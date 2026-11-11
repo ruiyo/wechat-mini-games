@@ -67,6 +67,7 @@ export class PuckBattleBootstrap extends Component {
 
   private shotsFired = 0;
   private totalScore = 0;
+  private scoreBeforeShot = 0;
   private bankedScore = 0;
   private bestScore = 0;
   private comboStreak = 0;
@@ -1012,6 +1013,7 @@ export class PuckBattleBootstrap extends Component {
       (dy / distance) * speed,
     );
 
+    this.scoreBeforeShot = this.totalScore;
     this.currentPuck.body.linearVelocity = velocity;
     this.currentPuck.body.wakeUp();
 
@@ -1121,7 +1123,13 @@ export class PuckBattleBootstrap extends Component {
     );
     const baseScore = scoreByDistance(distance, this.scoreRadii);
 
-    if (baseScore > 0) {
+    // First recalculate all active pucks with their current multipliers.
+    // A shot also counts as a success when it pushes an older puck into a scoring ring.
+    this.recalculateActiveScores();
+    const scoreDelta = this.totalScore - this.scoreBeforeShot;
+    const didScore = baseScore > 0 || scoreDelta > 0;
+
+    if (didScore) {
       this.comboStreak += 1;
       this.missCount = Math.max(0, this.missCount - 1);
       const comboMultiplier = Math.min(
