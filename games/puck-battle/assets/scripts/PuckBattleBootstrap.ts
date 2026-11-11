@@ -24,6 +24,7 @@ import { AmmoEffectController } from './AmmoEffectController';
 import { distanceBetween, scoreByDistance } from './ScoreRules';
 import { SaveManager } from './SaveManager';
 import { WordPuzzleController } from './WordPuzzleController';
+import { WORD_DEFINITIONS } from './WordDictionary';
 
 const { ccclass } = _decorator;
 
@@ -96,6 +97,10 @@ export class PuckBattleBootstrap extends Component {
   private confirmLabel: Label | null = null;
   private confirmGraphics: Graphics | null = null;
   private confirmNode: Node | null = null;
+  private wordBookButtonNode: Node | null = null;
+  private wordBookButtonLabel: Label | null = null;
+  private wordBookOverlay: Node | null = null;
+  private wordBookContentLabel: Label | null = null;
   private tileNodes: Node[] = [];
   private tileGraphics: Graphics[] = [];
   private tileLabels: Label[] = [];
@@ -157,6 +162,7 @@ export class PuckBattleBootstrap extends Component {
     this.createAimLayer();
     this.createHud();
     this.createWordPanel();
+    this.createWordBookOverlay();
 
     this.bestScore = SaveManager.getBestScore();
     this.discoveredWordCount = 0;
@@ -675,6 +681,34 @@ export class PuckBattleBootstrap extends Component {
       Color.WHITE,
     );
 
+    const bookButtonWidth = 112;
+    const bookButtonHeight = 48;
+    this.wordBookButtonNode = new Node('WordBookButton');
+    this.node.addChild(this.wordBookButtonNode);
+    this.wordBookButtonNode.setPosition(
+      this.screenWidth * 0.325,
+      -this.screenHeight * WORD_UI_CONFIG.confirmYRatio,
+      0,
+    );
+    const bookTransform = this.wordBookButtonNode.addComponent(UITransform);
+    bookTransform.setContentSize(bookButtonWidth, bookButtonHeight);
+    const bookGraphics = this.wordBookButtonNode.addComponent(Graphics);
+    bookGraphics.fillColor = new Color(94, 163, 208, 255);
+    bookGraphics.roundRect(-bookButtonWidth / 2, -bookButtonHeight / 2, bookButtonWidth, bookButtonHeight, 12);
+    bookGraphics.fill();
+    bookGraphics.lineWidth = 2;
+    bookGraphics.strokeColor = Color.WHITE;
+    bookGraphics.roundRect(-bookButtonWidth / 2, -bookButtonHeight / 2, bookButtonWidth, bookButtonHeight, 12);
+    bookGraphics.stroke();
+    this.wordBookButtonLabel = this.addChildLabel(
+      this.wordBookButtonNode,
+      '图鉴',
+      bookButtonWidth,
+      bookButtonHeight,
+      17,
+      Color.WHITE,
+    );
+
     this.updateWordPanel();
   }
 
@@ -771,12 +805,90 @@ export class PuckBattleBootstrap extends Component {
       this.confirmGraphics.rect(-110, -24, 220, 48);
       this.confirmGraphics.fill();
     }
+    this.updateWordBookButton();
+  }
+
+  private updateWordBookButton(): void {
+    if (!this.wordBookButtonLabel) return;
+    const discoveredCount = SaveManager.getDiscoveredWords().length;
+    this.wordBookButtonLabel.string = '图鉴 ' + discoveredCount + '/' + WORD_DEFINITIONS.length;
+  }
+
+  private buildWordBookText(): string {
+    const discovered = new Set(SaveManager.getDiscoveredWords());
+    const ammoNames = ['弹跳弹', '磁吸弹', '冰冻弹', '冲击弹'];
+    const lines = ammoNames.map((ammoName) => {
+      const words = WORD_DEFINITIONS
+        .filter((definition) => definition.ammoName === ammoName)
+        .map((definition) => (discovered.has(definition.word) ? '✓' : '○') + definition.word)
+        .join('  ');
+      return ammoName + '  ' + words;
+    });
+    return [
+      '已收录 ' + discovered.size + ' / ' + WORD_DEFINITIONS.length,
+      '',
+      ...lines,
+      '',
+      '✓ 已发现    ○ 待发现',
+    ].join('\n');
+  }
+
+  private createWordBookOverlay(): void {
+    const overlay = new Node('WordBookOverlay');
+    this.node.addChild(overlay);
+    overlay.setPosition(0, 0, 0);
+    const overlayTransform = overlay.addComponent(UITransform);
+    overlayTransform.setContentSize(this.screenWidth, this.screenHeight);
+    const overlayGraphics = overlay.addComponent(Graphics);
+    overlayGraphics.fillColor = new Color(18, 42, 62, 175);
+    overlayGraphics.rect(-this.screenWidth / 2, -this.screenHeight / 2, this.screenWidth, this.screenHeight);
+    overlayGraphics.fill();
+
+    const panelWidth = Math.min(620, this.screenWidth - 40);
+    const panelHeight = 480;
+    const panel = new Node('WordBookPanel');
+    overlay.addChild(panel);
+    const panelTransform = panel.addComponent(UITransform);
+    panelTransform.setContentSize(panelWidth, panelHeight);
+    const panelGraphics = panel.addComponent(Graphics);
+    panelGraphics.fillColor = new Color(250, 253, 255, 255);
+    panelGraphics.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight);
+    panelGraphics.fill();
+    panelGraphics.lineWidth = 5;
+    panelGraphics.strokeColor = new Color(110, 166, 202, 255);
+    panelGraphics.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight);
+    panelGraphics.stroke();
+
+    const title = this.addChildLabel(panel, '词语图鉴', panelWidth - 48, 44, 27, new Color(48, 91, 126, 255));
+    title.node.setPosition(0, 185, 0);
+    this.wordBookContentLabel = this.addChildLabel(
+      panel,
+      this.buildWordBookText(),
+      panelWidth - 52,
+      280,
+      18,
+      new Color(66, 103, 132, 255),
+    );
+    this.wordBookContentLabel.lineHeight = 42;
+    this.wordBookContentLabel.horizontalAlign = Label.HorizontalAlign.LEFT;
+    this.wordBookContentLabel.node.setPosition(0, 0, 0);
+    const close = this.addChildLabel(panel, '点击任意位置关闭', panelWidth - 48, 38, 16, new Color(113, 145, 168, 255));
+    close.node.setPosition(0, -196, 0);
+    overlay.active = false;
+    this.wordBookOverlay = overlay;
+  }
+
+  private openWordBook(): void {
+    if (!this.wordBookOverlay) return;
+    if (this.wordBookContentLabel) this.wordBookContentLabel.string = this.buildWordBookText();
+    this.wordBookOverlay.active = true;
   }
 
   private setWordPanelVisible(visible: boolean): void {
     if (this.wordTitleLabel) this.wordTitleLabel.node.active = visible;
     if (this.wordPreviewLabel) this.wordPreviewLabel.node.active = visible;
     if (this.confirmNode) this.confirmNode.active = visible;
+    if (this.wordBookButtonNode) this.wordBookButtonNode.active = visible;
     for (const node of this.tileNodes) node.active = visible;
   }
 
@@ -806,6 +918,13 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private handleWordInput(point: Vec2): void {
+    const bookX = this.screenWidth * 0.325;
+    const bookY = -this.screenHeight * WORD_UI_CONFIG.confirmYRatio;
+    if (this.wordBookButtonNode && Math.abs(point.x - bookX) <= 56 && Math.abs(point.y - bookY) <= 28) {
+      this.openWordBook();
+      return;
+    }
+
     if (this.confirmNode) {
       const confirmY = -this.screenHeight * WORD_UI_CONFIG.confirmYRatio;
       if (
@@ -852,6 +971,7 @@ export class PuckBattleBootstrap extends Component {
     this.runDiscoveredWords.add(definition.word);
     SaveManager.recordDiscoveredWord(definition.word);
     this.discoveredWordCount = this.runDiscoveredWords.size;
+    this.updateWordBookButton();
     this.spawnPuck(ammo);
     this.state = GameState.READY;
     this.showAmmoState();
@@ -965,6 +1085,11 @@ export class PuckBattleBootstrap extends Component {
 
   private onTouchStart(event: EventTouch): void {
     const point = this.getCanvasPoint(event);
+
+    if (this.wordBookOverlay?.active) {
+      this.wordBookOverlay.active = false;
+      return;
+    }
 
     if (this.state === GameState.RESULT) {
       this.restartRun();
