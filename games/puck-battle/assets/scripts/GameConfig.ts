@@ -9,10 +9,17 @@ export const PUCK_CONFIG = {
   stableDuration: 0.48,
   maxShotDuration: 9,
   wallThickness: 24,
+  maxActivePucks: 3,
+  maxMisses: 5,
+  comboStep: 0.15,
+  maxComboMultiplier: 2.2,
 } as const;
 
-export const PUCK_COLORS = [
-  { r: 66, g: 153, b: 225, a: 255 },
-  { r: 244, g: 114, b: 100, a: 255 },
-  { r: 91, g: 190, b: 145, a: 255 },
-] as const;
+export const WORD_UI_CONFIG = {
+  tileWidth: 72,
+  tileHeight: 76,
+  tileGap: 12,
+  tileYRatio: 0.36,
+  previewYRatio: 0.425,
+  confirmYRatio: 0.475,
+} as const;

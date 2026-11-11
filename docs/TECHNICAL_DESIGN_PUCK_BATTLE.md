@@ -1,192 +1,134 @@
-# 《冰壶碰碰局》技术设计
+# 《词弹碰碰局》技术设计
 
-- 版本：0.1
-- 引擎：Cocos Creator 3.8 LTS
+- 版本：0.2
+- 引擎：Cocos Creator 3.8.x
 - 语言：TypeScript
-- 物理：Cocos Creator 2D Physics（Box2D）
-- 目标：先完成可验证的单机原型
+- 物理：Cocos Creator 2D Physics / Box2D
+- 模式：无尽模式优先
 
-## 1. 技术原则
-
-1. 使用真实 2D 刚体碰撞实现圆盘互相推动。
-2. 使用零重力的俯视物理世界。
-3. 所有物理参数集中在配置中。
-4. 使用固定时间步长进行物理模拟。
-5. 计分以最终静止位置为准，不在碰撞瞬间锁定分数。
-6. 物理逻辑、回合逻辑、输入和 UI 分离。
-7. 首版不引入服务器、联网框架或复杂依赖。
-
-## 2. 模块划分
+## 1. 模块架构
 
 | 模块 | 职责 |
 |---|---|
-| GameManager | 场景级游戏入口和状态协调 |
-| RoundController | 管理一局三次投掷 |
-| InputController | 触摸按下、拖动、松开和取消 |
-| ShotController | 根据拖动向量计算发射方向和速度/冲量 |
-| PhysicsController | 物理世界参数、模拟状态和稳定检测 |
-| PuckController | 单颗圆盘的刚体、碰撞和状态 |
-| ArenaController | 场地边界、目标区和发射点 |
-| ScoreController | 根据最终位置计算各圆盘分数 |
-| UIController | HUD、提示、结算和重新开始 |
-| SaveManager | 本地最高分和设置保存 |
+| PuckBattleBootstrap | 场景入口、UI 创建、状态协调 |
+| WordPuzzleController | 字池、选择、词语确认和补字 |
+| WordDictionary | 本地双字词映射 |
+| AmmoFactory | 将词语映射为弹药配置 |
+| AmmoEffectController | 配置刚体/碰撞体并执行飞行期效果 |
+| Shot/Input logic | 拖动瞄准、力度映射和发射 |
+| PhysicsSystem2D | Box2D 碰撞和物理模拟 |
+| ScoreRules | 目标区域得分计算 |
+| SaveManager | 最高分和已发现词语本地存储 |
 
-## 3. 游戏状态
+## 2. 状态机
 
 ```typescript
 enum GameState {
+  WORD_SELECT,
   READY,
   AIMING,
   FLYING,
   SETTLING,
-  NEXT_SHOT,
   RESULT,
 }
 ```
 
-状态含义：
+- WORD_SELECT：选择两个汉字。
+- READY：弹药生成，等待拖动。
+- AIMING：拖动瞄准。
+- FLYING：场上至少一个弹药正在运动。
+- SETTLING：等待所有活动弹药稳定。
+- RESULT：失误达到上限，展示本局结果。
 
-- READY：等待玩家操作。
-- AIMING：当前圆盘正在被拖动瞄准。
-- FLYING：至少一颗圆盘处于运动状态。
-- SETTLING：等待所有圆盘达到稳定条件。
-- NEXT_SHOT：准备下一次投掷。
-- RESULT：三次投掷完成，展示结算。
+## 3. 词语数据
 
-禁止在 FLYING 或 SETTLING 状态接受新的发射输入。
+`WordDictionary.ts` 提供 24 个有效词语。每条记录包含：
+- word
+- ammoType
+- ammoName
+- description
 
-## 4. 坐标和屏幕适配
+`WordPuzzleController` 维护 6 个字：
+- reset：从保证包含有效词语的字包初始化。
+- toggleSelection：最多选择两个不同位置。
+- getSelectedWord：查词典，正序和逆序均可匹配。
+- confirmSelection：移除两个字，并补充一个词典中的随机双字词。
 
-- 采用竖屏设计，建议逻辑设计分辨率 720×1280。
-- 场地、目标区、发射点和圆盘半径均使用逻辑坐标。
-- 触摸坐标必须先转换到场景/世界坐标，再计算拖动向量。
-- 不要直接使用设备物理像素作为物理参数。
-- UI 安全区域与场地可用区域分开处理。
+## 4. 弹药数据
 
-## 5. 物理世界
+`AmmoFactory` 负责生成统一的 `AmmoDefinition`：
+- type
+- word
+- name
+- description
+- color
+- launchSpeedMultiplier
+- restitution
+- friction
+- linearDamping
+- density
+- scoreMultiplier
+- magnetSteer
+- targetDamping
 
-### 5.1 基础设置
+主游戏脚本不直接判断每种弹药的数值细节。
+
+## 5. 弹药效果
+
+- 弹跳弹：提高碰撞恢复系数，降低阻尼。
+- 磁吸弹：飞行时以小幅方向插值向目标中心偏转，保留当前速度大小。
+- 冰冻弹：进入目标外圈范围后提高线性阻尼。
+- 冲击弹：提高初始速度倍率、碰撞恢复系数和碰撞体密度。
+
+磁吸和冰冻属于受控的街机效果，不追求真实电磁或热力学模拟。效果强度集中在 AmmoFactory 配置中，便于调整。
+
+## 6. 物理世界
 
 - 重力：0, 0。
 - 固定模拟步长：1/60 秒。
-- 圆盘：Dynamic RigidBody2D + CircleCollider2D。
-- 场地边界：Static RigidBody2D + 对应 Collider。
-- 固定障碍：Static RigidBody2D + Collider（MVP 可不放置障碍）。
-- 圆盘之间启用碰撞。
+- 弹药：Dynamic RigidBody2D + CircleCollider2D。
+- 场地边界：Static RigidBody2D + BoxCollider2D。
+- 固定弹性机关：Static RigidBody2D + CircleCollider2D。
+- 弹药之间启用碰撞。
+- 每帧对磁吸弹执行轻微方向修正；冰冻弹在目标圈附近改变阻尼。
 
-### 5.2 速度衰减
+## 7. 无尽模式分数管理
 
-俯视场景没有重力，不能依赖普通地面摩擦自然减速。应通过刚体线性阻尼，或在统一物理更新中施加可控的速度衰减实现滑行停止。
+- `bankedScore`：已经从场上移除的旧弹药归档分数。
+- `pucks`：当前保留的最多 3 颗弹药。
+- 每颗弹药存储自己的 scoreMultiplier。
+- 每次所有弹药稳定后，重新计算活动弹药的区域分数。
+- 总分 = bankedScore + 活动弹药得分之和。
+- 新弹药生成前，如果活动弹药达到 3 颗，移除最旧弹药并将其当前得分计入 bankedScore。
 
-需要通过真机/模拟器试玩调整：
-- 初始速度映射。
-- 线性阻尼。
-- 碰撞弹性。
-- 接触摩擦。
-- 速度阈值。
+## 8. 连击和失误
 
-不要把未经测试的数值当作最终参数。
-
-### 5.3 稳定检测
-
-不能只等待固定时长结束一投。建议每个物理步检查所有圆盘速度：
-
-- 当所有圆盘速度低于阈值时，累计稳定时间。
-- 若任一圆盘重新加速，稳定计时清零。
-- 所有圆盘持续低速达到设定时间后，才进入 NEXT_SHOT 或 RESULT。
-
-需要设置最大单次模拟时长作为异常保护；触发保护时应以安全方式停止剩余运动并记录调试信息，不能让回合永久卡住。
-
-## 6. 发射计算
-
-设拖动起点为 (p_0)，当前触点为 (p_1)：
-
-[
-d = p_0 - p_1
-]
-
-[
-P = min(|d|/d_{max}, 1)
-]
-
-[
-v_0 = rac{d}{|d|} cdot v_{max} cdot P
-]
-
-- 拖动方向反向作为发射方向。
-- 低于最小拖动阈值时取消发射。
-- 达到最大拖动距离后力度封顶。
-- 采用统一的速度映射或冲量映射，避免在不同质量配置下产生不一致手感。
-- 瞄准线、力度条和实际发射必须使用同一组计算参数。
-
-## 7. 圆盘生成与回合管理
-
-- 每局创建三个发射机会。
-- 建议预设三个底部发射点，避免前一颗圆盘停在默认发射位置导致重叠。
-- 生成下一颗圆盘前，检查发射点是否与现有圆盘重叠。
-- 如果发射点被占用，按预设顺序尝试其他发射点。
-- 如果所有发射点都被占用，提示玩家或进入安全恢复逻辑，不允许新圆盘与旧圆盘强行重叠。
-- 已投出的圆盘在本局结束前一直保留。
-
-## 8. 计分
-
-每颗圆盘停止后，计算其中心到目标中心的距离。区域半径从场地配置读取。
-
-```typescript
-function scoreByDistance(distance: number, radii: {
-  center: number;
-  middle: number;
-  outer: number;
-}): number {
-  if (distance <= radii.center) return 50;
-  if (distance <= radii.middle) return 30;
-  if (distance <= radii.outer) return 10;
-  return 0;
-}
-```
-
-每次稳定后可以更新暂定分数；每次新碰撞和新一投完成后重新计算所有圆盘位置。最终总分只在第三次投掷完全稳定后锁定。
+- 当前弹药命中目标：comboStreak +1，missCount -1（最低为0）。
+- 未命中：comboStreak 清零，missCount +1。
+- comboMultiplier = min(1 + (comboStreak - 1) × comboStep, maxComboMultiplier)。
+- 失误达到配置上限后结束本局。
 
 ## 9. 存档
 
-首版只保存：
-- 个人最高分。
-- 已完成的教程状态（如有）。
-- 音效开关。
-- 当前版本号。
+使用 Cocos `sys.localStorage` 封装：
+- 最高分。
+- 已发现词语列表。
+- 音效设置。
 
-通过 SaveManager 封装本地存储，避免业务脚本直接调用平台 API。后续若增加云存档，再替换存储实现。
+保留旧版最高分键读取逻辑，避免覆盖已有《冰壶碰碰局》原型记录。
 
-## 10. 目录建议
+## 10. 测试重点
 
-```text
-assets/
-├── scenes/
-│   ├── MainMenu.scene
-│   └── Game.scene
-├── scripts/
-│   ├── core/
-│   ├── gameplay/
-│   ├── physics/
-│   ├── ui/
-│   └── services/
-├── prefabs/
-│   ├── Puck.prefab
-│   └── ArenaBoundary.prefab
-├── textures/
-├── audio/
-└── data/
-```
-
-## 11. 测试重点
-
-- 触摸坐标与世界坐标转换。
-- 拖动方向与发射方向是否相反。
-- 最小/最大拖动距离边界。
-- 圆盘高速碰撞时是否穿透。
-- 多圆盘连续碰撞时是否抖动。
-- 稳定检测是否误判。
-- 发射点被占用时的处理。
-- 计分是否在碰撞后正确更新。
-- 低端设备运行流畅度。
-- 微信小游戏构建后的触摸和本地存储兼容性。
+- 字池始终至少包含一个有效词语。
+- 选择两个字后正序/逆序匹配结果正确。
+- 组词失败不消耗字。
+- 组词成功后字池仍为 6 个字。
+- 四种弹药参数正确加载。
+- 磁吸弹不会在低速时产生方向抖动。
+- 冰冻弹进入目标区附近后能够减速。
+- 活动弹药不超过 3 颗。
+- 旧弹药归档分数不会重复累计。
+- 碰撞后活动弹药得分能够重新计算。
+- 失误达到 5 时正确结束。
+- 重新开始后状态和场上对象完全重置。
+- 微信小游戏触摸和本地存储正常。
