@@ -1197,6 +1197,7 @@ export class PuckBattleBootstrap extends Component {
         '\n发现词语：' + this.discoveredWordCount +
         '\n\n点击屏幕重新开始';
       this.resultLabel.node.active = true;
+      this.resultLabel.node.setSiblingIndex(this.node.children.length - 1);
     }
 
     if (this.hintLabel) {
@@ -1215,6 +1216,7 @@ export class PuckBattleBootstrap extends Component {
     this.currentAmmo = null;
     this.shotsFired = 0;
     this.totalScore = 0;
+    this.scoreBeforeShot = 0;
     this.bankedScore = 0;
     this.comboStreak = 0;
     this.missCount = 0;
