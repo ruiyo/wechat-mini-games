@@ -1,22 +1,23 @@
 # GitHub 自动构建配置（Cocos Creator 3.8.8）
 
-仓库通过 GitHub Actions 自动执行逻辑测试，并由 Windows self-hosted runner 调用 Cocos Creator 3.8.8 构建微信小游戏。
+本仓库通过 GitHub Actions 自动执行逻辑测试，并由 Windows self-hosted runner 调用 Cocos Creator 3.8.8 构建微信小游戏。
 
 ## 自动化流程
 
-1. Push 到 feature/puck-battle-prototype 后，Ubuntu runner 自动执行项目结构、场景引用和逻辑单元测试。
+1. Push 到 feature/puck-battle-prototype 后，Ubuntu runner 自动执行项目结构、场景引用、项目设置和逻辑单元测试。
 2. 测试通过后，可信 push 自动分配给带有 cocos-creator 标签的 Windows runner。
 3. Windows runner 使用 COCOS_CREATOR_PATH 调用 Cocos Creator CLI，构建 wechatgame。
-4. 构建目录和日志上传为 Actions artifact。
+4. 构建目录和完整诊断日志上传为 Actions artifact。
 5. Pull Request（包括来自 fork 的 PR）只运行 Ubuntu 逻辑测试，不会在个人电脑上执行不可信代码。
 
 ## Windows Runner
 
 Runner 名称：word-puck-win。标签：Windows、X64、cocos-creator。
 
-- 在 Windows 登录会话中运行 run.cmd。
-- 不要将 Runner 安装为 Windows 服务，因为 Cocos Creator 命令行构建需要 GUI 环境。
+- 在正常 Windows 登录用户会话中运行 run.cmd。
+- 不要将 Runner 安装为 Windows 服务；Cocos Creator CLI 需要 GUI 环境。
 - 保持电脑开机且 Runner 窗口运行。
+- 构建时建议关闭正在编辑同一项目的 Cocos Creator GUI 窗口，避免编辑器与 CLI 同时操作项目缓存。
 
 ## 仓库变量
 
@@ -26,27 +27,50 @@ Settings -> Secrets and variables -> Actions -> Variables：
 |---|---|
 | COCOS_CREATOR_PATH | C:\ProgramData\cocos\editors\Creator\3.8.8\CocosCreator.exe |
 
-工作流不再读取 ENABLE_COCOS_BUILD。只要 Runner 在线，可信分支每次 push 都会自动构建；之前创建的 ENABLE_COCOS_BUILD 变量可以保留，不会被读取。
+ENABLE_COCOS_BUILD 不再使用；可信分支 push 会自动构建。
 
-## 入口场景
+## Cocos 项目目录
 
-入口场景已经提交：
+Cocos 项目根目录是 games/puck-battle。所有 Cocos 项目设置必须位于这个目录内部：
+
+- games/puck-battle/settings/v2/packages/engine.json
+- games/puck-battle/settings/v2/packages/project.json
+
+不要把 settings 放在仓库根目录。验证脚本和构建脚本均检查项目根目录内的 settings。
+
+入口场景：
 - games/puck-battle/assets/scenes/Game.scene
 - games/puck-battle/assets/scenes/Game.scene.meta
 
-场景包含 Canvas、UI Camera、UITransform、Canvas、Widget 和 PuckBattleBootstrap 组件。settings/v2/packages/engine.json 已包含 physics-2d-box2d 模块。不要手动重新创建或覆盖 Game.scene。
+场景包含 Canvas、UI Camera、UITransform、Canvas、Widget 和 PuckBattleBootstrap 组件。engine.json 包含 physics-2d-box2d 模块。
+
+## 自动构建
+
+构建参数：
+
+    CocosCreator.exe --project PROJECT_PATH --build "platform=wechatgame;debug=true;orientation=portrait;buildPath=build/ci-wechatgame"
+
+Cocos Creator 官方命令行构建文档说明：
+- 32：构建参数无效
+- 34：构建过程失败
+- 36：构建成功
+
+GitHub Actions job 最长运行 30 分钟。构建脚本会记录：
+- Windows 运行身份和 USERPROFILE
+- Cocos Creator 路径与项目路径
+- 已运行的 CocosCreator.exe 进程
+- 标准输出、标准错误和 Cocos 内部日志
+- 进程退出码和输出目录检查
 
 ## 构建产物
 
 构建目录：games/puck-battle/build/ci-wechatgame
-构建日志：Runner 临时目录中的 cocos-build.log
-Actions artifact：word-puck-wechat-build，保留 14 天。
 
-Cocos Creator 官方命令行文档说明：退出码 36 表示构建成功，32/34 表示构建失败。
+Actions artifact：word-puck-wechat-build，保留 14 天。失败时也会尝试上传日志。
 
 ## 安全边界
 
 - GitHub-hosted runner 运行所有 PR 的静态检查和逻辑测试。
-- 本地 Windows runner 只处理可信分支 push 和手动 workflow_dispatch。
+- 本地 Windows runner 只处理可信分支 push 和指定分支的手动 workflow_dispatch。
 - 不对 fork PR 执行 self-hosted job。
 - Runner 保持交互式用户会话运行。

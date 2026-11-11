@@ -2,46 +2,139 @@ param(
     [Parameter(Mandatory = $true)][string]$CreatorPath,
     [Parameter(Mandatory = $true)][string]$ProjectPath
 )
+
 $ErrorActionPreference = 'Stop'
 
-if ([string]::IsNullOrWhiteSpace($CreatorPath)) { throw 'COCOS_CREATOR_PATH is empty.' }
-if (-not (Test-Path -LiteralPath $CreatorPath -PathType Leaf)) { throw "Cocos Creator executable not found: $CreatorPath" }
-if (-not (Test-Path -LiteralPath $ProjectPath -PathType Container)) { throw "Cocos project not found: $ProjectPath" }
+if ([string]::IsNullOrWhiteSpace($CreatorPath)) {
+    throw 'COCOS_CREATOR_PATH is empty.'
+}
+if (-not (Test-Path -LiteralPath $CreatorPath -PathType Leaf)) {
+    throw "Cocos Creator executable not found: $CreatorPath"
+}
+if (-not (Test-Path -LiteralPath $ProjectPath -PathType Container)) {
+    throw "Cocos project not found: $ProjectPath"
+}
 
-$package = Get-Content -LiteralPath (Join-Path $ProjectPath 'package.json') -Raw | ConvertFrom-Json
-if ($package.creator.version -ne '3.8.8') { throw "Expected Cocos Creator 3.8.8, found $($package.creator.version)" }
+$packagePath = Join-Path $ProjectPath 'package.json'
+$package = Get-Content -LiteralPath $packagePath -Raw | ConvertFrom-Json
+if ($package.creator.version -ne '3.8.8') {
+    throw "Expected Cocos Creator 3.8.8, found $($package.creator.version)"
+}
 
-$repoRoot = Split-Path (Split-Path $ProjectPath -Parent) -Parent
-$requiredFiles = @(
-    (Join-Path $ProjectPath 'assets\scenes\Game.scene'),
-    (Join-Path $ProjectPath 'assets\scenes\Game.scene.meta'),
-    (Join-Path $ProjectPath 'assets\scripts\PuckBattleBootstrap.ts.meta'),
-    (Join-Path $repoRoot 'settings\v2\packages\engine.json')
-)
-foreach ($file in $requiredFiles) {
-    if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Required project file missing: $file" }
+# Cocos settings must live inside the actual project root, beside assets/package.json.
+$engineSettingsPath = Join-Path $ProjectPath 'settings\v2\packages\engine.json'
+$projectSettingsPath = Join-Path $ProjectPath 'settings\v2\packages\project.json'
+$scenePath = Join-Path $ProjectPath 'assets\scenes\Game.scene'
+$sceneMetaPath = "$scenePath.meta"
+$scriptMetaPath = Join-Path $ProjectPath 'assets\scripts\PuckBattleBootstrap.ts.meta'
+
+foreach ($file in @($engineSettingsPath, $projectSettingsPath, $scenePath, $sceneMetaPath, $scriptMetaPath)) {
+    if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+        throw "Required Cocos project file missing: $file"
+    }
+}
+
+$engineSettings = Get-Content -LiteralPath $engineSettingsPath -Raw | ConvertFrom-Json
+if ($engineSettings.modules.includeModules -notcontains 'physics-2d-box2d') {
+    throw 'The project engine settings do not include physics-2d-box2d.'
 }
 
 $runnerTemp = $env:RUNNER_TEMP
 if ([string]::IsNullOrWhiteSpace($runnerTemp)) { $runnerTemp = $env:TEMP }
-$logPath = Join-Path $runnerTemp 'cocos-build.log'
-$buildArgs = 'platform=wechatgame;debug=true;buildPath=build/ci-wechatgame'
-$outputPath = Join-Path $ProjectPath 'build\ci-wechatgame'
-if (Test-Path -LiteralPath $outputPath) { Remove-Item -LiteralPath $outputPath -Recurse -Force }
+if ([string]::IsNullOrWhiteSpace($runnerTemp)) { throw 'Neither RUNNER_TEMP nor TEMP is available.' }
+New-Item -ItemType Directory -Force -Path $runnerTemp | Out-Null
 
-Write-Host "Using Cocos Creator: $CreatorPath"
-Write-Host "Building project: $ProjectPath"
-Write-Host "Build arguments: $buildArgs"
-Push-Location $ProjectPath
+$stdoutPath = Join-Path $runnerTemp 'cocos-build.stdout.log'
+$stderrPath = Join-Path $runnerTemp 'cocos-build.stderr.log'
+$cliLogPath = Join-Path $runnerTemp 'cocos-creator-cli.log'
+$summaryPath = Join-Path $runnerTemp 'cocos-build.log'
+$buildPath = Join-Path $ProjectPath 'build\ci-wechatgame'
+$buildArgs = "platform=wechatgame;debug=true;orientation=portrait;buildPath=build/ci-wechatgame;logDest=$cliLogPath"
+
+@(
+    'Word Puck Cocos Creator build diagnostics'
+    ('Timestamp: ' + (Get-Date -Format o))
+    ('Windows identity: ' + (& whoami))
+    ('USERPROFILE: ' + $env:USERPROFILE)
+    ('Creator executable: ' + $CreatorPath)
+    ('Creator version expected: 3.8.8')
+    ('Project root: ' + $ProjectPath)
+    ('Project settings: ' + $engineSettingsPath)
+    ('Runner temp: ' + $runnerTemp)
+    ('Build arguments: ' + $buildArgs)
+) | Set-Content -LiteralPath $summaryPath -Encoding UTF8
+
+# Record existing editor processes for diagnostics. Do not terminate the user's editor.
 try {
-    & $CreatorPath --project $ProjectPath --build $buildArgs 2>&1 | Tee-Object -FilePath $logPath
-    $exitCode = $LASTEXITCODE
-} finally {
-    Pop-Location
+    $creatorProcesses = @(Get-CimInstance Win32_Process -Filter "Name='CocosCreator.exe'" |
+        Select-Object ProcessId, ParentProcessId, CommandLine)
+    ('Existing CocosCreator.exe process count: ' + $creatorProcesses.Count) |
+        Add-Content -LiteralPath $summaryPath -Encoding UTF8
+    $creatorProcesses | Format-List | Out-String |
+        Add-Content -LiteralPath $summaryPath -Encoding UTF8
+} catch {
+    ('Could not enumerate existing Cocos Creator processes: ' + $_.Exception.Message) |
+        Add-Content -LiteralPath $summaryPath -Encoding UTF8
 }
 
-if ($exitCode -notin @(0, 36)) { throw "Cocos Creator build failed with exit code $exitCode. Log: $logPath" }
-if (-not (Test-Path -LiteralPath $outputPath -PathType Container)) { throw "Build output directory missing: $outputPath" }
-$files = @(Get-ChildItem -LiteralPath $outputPath -File -Recurse)
-if ($files.Count -eq 0) { throw "Build output directory is empty: $outputPath" }
-Write-Host "WeChat build completed. Files: $($files.Count)"
+if (Test-Path -LiteralPath $buildPath) {
+    Remove-Item -LiteralPath $buildPath -Recurse -Force
+}
+foreach ($oldLog in @($stdoutPath, $stderrPath, $cliLogPath)) {
+    if (Test-Path -LiteralPath $oldLog) { Remove-Item -LiteralPath $oldLog -Force }
+}
+
+Write-Host "Running as: $(& whoami)"
+Write-Host "User profile: $env:USERPROFILE"
+Write-Host "Cocos Creator: $CreatorPath"
+Write-Host "Project: $ProjectPath"
+Write-Host "Build log: $summaryPath"
+
+$argumentList = @(
+    '--project',
+    ('"' + $ProjectPath + '"'),
+    '--build',
+    ('"' + $buildArgs + '"')
+)
+
+try {
+    $process = Start-Process -FilePath $CreatorPath -ArgumentList $argumentList -WorkingDirectory $ProjectPath -PassThru -Wait -NoNewWindow -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+    $exitCode = $process.ExitCode
+} catch {
+    ('Start-Process failed: ' + $_.Exception.ToString()) |
+        Add-Content -LiteralPath $summaryPath -Encoding UTF8
+    throw
+}
+
+'--- Cocos Creator stdout ---' | Add-Content -LiteralPath $summaryPath -Encoding UTF8
+if (Test-Path -LiteralPath $stdoutPath) {
+    Get-Content -LiteralPath $stdoutPath -Raw |
+        Add-Content -LiteralPath $summaryPath -Encoding UTF8
+}
+'--- Cocos Creator stderr ---' | Add-Content -LiteralPath $summaryPath -Encoding UTF8
+if (Test-Path -LiteralPath $stderrPath) {
+    Get-Content -LiteralPath $stderrPath -Raw |
+        Add-Content -LiteralPath $summaryPath -Encoding UTF8
+}
+'--- Cocos Creator internal log ---' | Add-Content -LiteralPath $summaryPath -Encoding UTF8
+if (Test-Path -LiteralPath $cliLogPath) {
+    Get-Content -LiteralPath $cliLogPath -Raw |
+        Add-Content -LiteralPath $summaryPath -Encoding UTF8
+}
+
+('Cocos Creator process exit code: ' + $exitCode) |
+    Add-Content -LiteralPath $summaryPath -Encoding UTF8
+
+if ($exitCode -notin @(0, 36)) {
+    throw "Cocos Creator build failed with exit code $exitCode. See $summaryPath and $cliLogPath"
+}
+if (-not (Test-Path -LiteralPath $buildPath -PathType Container)) {
+    throw "Cocos Creator exited successfully but build output is missing: $buildPath"
+}
+$buildFiles = @(Get-ChildItem -LiteralPath $buildPath -File -Recurse)
+if ($buildFiles.Count -eq 0) {
+    throw "Cocos Creator build output is empty: $buildPath"
+}
+
+Write-Host "WeChat Mini Game build completed. Output files: $($buildFiles.Count)"
+Write-Host "Build output: $buildPath"

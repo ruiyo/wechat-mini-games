@@ -6,7 +6,6 @@ on:
       - feature/puck-battle-prototype
     paths:
       - "games/puck-battle/**"
-      - "settings/**"
       - "tests/**"
       - "scripts/**"
       - ".github/workflows/**"
@@ -16,7 +15,6 @@ on:
       - main
     paths:
       - "games/puck-battle/**"
-      - "settings/**"
       - "tests/**"
       - "scripts/**"
       - ".github/workflows/**"
@@ -43,9 +41,9 @@ jobs:
   cocos-wechat-build:
     name: Cocos Creator 3.8.8 WeChat build
     needs: logic-validation
-    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/feature/puck-battle-prototype') }}
     runs-on: [self-hosted, Windows, X64, cocos-creator]
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Build WeChat Mini Game with Cocos Creator
@@ -57,13 +55,16 @@ jobs:
           $projectPath = Join-Path $env:GITHUB_WORKSPACE 'games\puck-battle'
           $buildScript = Join-Path $env:GITHUB_WORKSPACE 'scripts\windows\build-wechat.ps1'
           & $buildScript -CreatorPath $env:COCOS_CREATOR_PATH -ProjectPath $projectPath
-      - name: Upload build and logs
+      - name: Upload build and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: word-puck-wechat-build
           path: |
-            games/puck-battle/build/**
+            games/puck-battle/build/ci-wechatgame/**
             ${{ runner.temp }}\cocos-build.log
+            ${{ runner.temp }}\cocos-build.stdout.log
+            ${{ runner.temp }}\cocos-build.stderr.log
+            ${{ runner.temp }}\cocos-creator-cli.log
           if-no-files-found: warn
           retention-days: 14
