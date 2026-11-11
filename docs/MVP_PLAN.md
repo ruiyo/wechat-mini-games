@@ -54,6 +54,7 @@
 
 - [x] 保存最高分。
 - [x] 保存已发现词语。
+- [x] 提供 24 词语收集图鉴弹层和已发现状态标记。
 - [x] 显示本局发现词语数量。
 - [x] 结算界面展示分数、发射次数和发现词语。
 - [x] 重新开始清空本局状态。
@@ -73,6 +74,7 @@
 - 微信 game.json：deviceOrientation=portrait。
 - 引擎运行配置：720×1280，FIXED_HEIGHT。
 - 构建产物：GitHub Actions Artifact word-puck-wechat-build。
+- 词语图鉴 UI：编译产物包含 WordBookOverlay、24 词分类和本地收录状态。
 
 ## 尚未完成的发布前验收
 
