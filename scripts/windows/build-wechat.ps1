@@ -181,7 +181,10 @@ foreach ($relativeOutput in $requiredOutputs) {
 }
 
 $wechatProjectConfigPath = Join-Path $buildPath 'project.config.json'
-$wechatProjectConfig = Get-Content -LiteralPath $wechatProjectConfigPath -Raw | ConvertFrom-Json
+# Windows PowerShell 5.1 defaults Get-Content to the active ANSI code page.
+# Read generated UTF-8 JSON explicitly because project.config.json contains Chinese text.
+$wechatProjectConfigJson = [System.IO.File]::ReadAllText($wechatProjectConfigPath, [System.Text.Encoding]::UTF8)
+$wechatProjectConfig = $wechatProjectConfigJson | ConvertFrom-Json
 if ($wechatProjectConfig.compileType -ne 'game') {
     throw "Expected WeChat compileType=game, found $($wechatProjectConfig.compileType)"
 }
