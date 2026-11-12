@@ -16,9 +16,13 @@ export const PUCK_CONFIG = {
 } as const;
 
 export const WORD_UI_CONFIG = {
-  tileWidth: 72,
-  tileHeight: 76,
-  tileGap: 12,
+  tileWidth: 52,
+  tileHeight: 72,
+  tileGap: 8,
+  tileFontSize: 27,
+  wordBookButtonXRatio: 0.36,
+  wordBookButtonWidth: 112,
+  wordBookButtonHeight: 48,
   tileYRatio: 0.36,
   previewYRatio: 0.425,
   confirmYRatio: 0.475,

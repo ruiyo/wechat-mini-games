@@ -642,7 +642,7 @@ export class PuckBattleBootstrap extends Component {
       const labelTransform = labelNode.addComponent(UITransform);
       labelTransform.setContentSize(tileWidth, tileHeight);
       const label = labelNode.addComponent(Label);
-      label.fontSize = 32;
+      label.fontSize = WORD_UI_CONFIG.tileFontSize;
       label.color = new Color(52, 105, 151, 255);
       label.horizontalAlign = Label.HorizontalAlign.CENTER;
       label.verticalAlign = Label.VerticalAlign.CENTER;
@@ -681,12 +681,12 @@ export class PuckBattleBootstrap extends Component {
       Color.WHITE,
     );
 
-    const bookButtonWidth = 112;
-    const bookButtonHeight = 48;
+    const bookButtonWidth = WORD_UI_CONFIG.wordBookButtonWidth;
+    const bookButtonHeight = WORD_UI_CONFIG.wordBookButtonHeight;
     this.wordBookButtonNode = new Node('WordBookButton');
     this.node.addChild(this.wordBookButtonNode);
     this.wordBookButtonNode.setPosition(
-      this.screenWidth * 0.325,
+      this.screenWidth * WORD_UI_CONFIG.wordBookButtonXRatio,
       -this.screenHeight * WORD_UI_CONFIG.confirmYRatio,
       0,
     );
@@ -869,7 +869,7 @@ export class PuckBattleBootstrap extends Component {
       18,
       new Color(66, 103, 132, 255),
     );
-    this.wordBookContentLabel.lineHeight = 42;
+    this.wordBookContentLabel.lineHeight = 32;
     this.wordBookContentLabel.horizontalAlign = Label.HorizontalAlign.LEFT;
     this.wordBookContentLabel.node.setPosition(0, 0, 0);
     const close = this.addChildLabel(panel, '点击任意位置关闭', panelWidth - 48, 38, 16, new Color(113, 145, 168, 255));
@@ -918,7 +918,7 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private handleWordInput(point: Vec2): void {
-    const bookX = this.screenWidth * 0.325;
+    const bookX = this.screenWidth * WORD_UI_CONFIG.wordBookButtonXRatio;
     const bookY = -this.screenHeight * WORD_UI_CONFIG.confirmYRatio;
     if (this.wordBookButtonNode && Math.abs(point.x - bookX) <= 56 && Math.abs(point.y - bookY) <= 28) {
       this.openWordBook();
