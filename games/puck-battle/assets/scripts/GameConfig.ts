@@ -1,13 +1,13 @@
 export const PUCK_CONFIG = {
   arenaWidthRatio: 0.86,
-  arenaHeightRatio: 0.59,
+  arenaHeightRatio: 0.52,
   puckRadius: 19,
-  maxPullDistance: 155,
-  minPullDistance: 12,
-  maxLaunchSpeed: 760,
-  stopSpeed: 7,
-  stableDuration: 0.48,
-  maxShotDuration: 9,
+  maxPullDistance: 205,
+  minPullDistance: 20,
+  maxLaunchSpeed: 720,
+  stopSpeed: 10,
+  stableDuration: 0.30,
+  maxShotDuration: 7.5,
   wallThickness: 24,
   maxActivePucks: 3,
   maxMisses: 5,
@@ -26,4 +26,12 @@ export const WORD_UI_CONFIG = {
   tileYRatio: 0.36,
   previewYRatio: 0.425,
   confirmYRatio: 0.475,
+} as const;
+
+/** Keeps short drags deliberate and gives medium pulls finer speed control. */
+export const AIM_CONFIG = {
+  powerExponent: 1.35,
+  minimumSpeedRatio: 0.23,
+  touchRadiusMultiplier: 3.2,
+  moveRedrawThreshold: 2,
 } as const;

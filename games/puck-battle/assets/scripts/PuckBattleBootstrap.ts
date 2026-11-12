@@ -15,9 +15,11 @@ import {
   UITransform,
   Vec2,
   view,
+  profiler,
 } from 'cc';
 
-import { PUCK_CONFIG, WORD_UI_CONFIG } from './GameConfig';
+import { AIM_CONFIG, PUCK_CONFIG, WORD_UI_CONFIG } from './GameConfig';
+import { calculateAim } from './AimRules';
 import { AmmoFactory } from './AmmoFactory';
 import type { AmmoDefinition } from './AmmoFactory';
 import { AmmoEffectController } from './AmmoEffectController';
@@ -78,7 +80,9 @@ export class PuckBattleBootstrap extends Component {
 
   private isDragging = false;
   private dragStart = new Vec2();
+  private dragTouchStart = new Vec2();
   private dragCurrent = new Vec2();
+  private aimPowerLabel: Label | null = null;
   private settleElapsed = 0;
   private shotElapsed = 0;
 
@@ -129,12 +133,13 @@ export class PuckBattleBootstrap extends Component {
       this.screenHeight * PUCK_CONFIG.arenaHeightRatio,
       820,
     );
-    this.arenaCenterY = -this.screenHeight * 0.025;
+    // A compact playfield leaves independent space for word cards and safe-area controls.
+    this.arenaCenterY = this.screenHeight * 0.038;
     this.targetCenter = new Vec2(
       0,
       this.arenaCenterY + this.arenaHeight * 0.285,
     );
-    this.launchY = this.arenaCenterY - this.arenaHeight * 0.365;
+    this.launchY = this.arenaCenterY - this.arenaHeight * 0.345;
 
     const outer = Math.min(this.arenaWidth * 0.22, 132);
     this.scoreRadii = {
@@ -154,6 +159,9 @@ export class PuckBattleBootstrap extends Component {
     this.physicsReady =
       PhysicsSystem2D.PHYSICS_BOX2D ||
       PhysicsSystem2D.PHYSICS_BOX2D_WASM;
+
+    // The default Cocos performance overlay covers the game controls on phones.
+    profiler.hideStats();
 
     this.createBackground();
     this.createArenaVisuals();
@@ -501,6 +509,11 @@ export class PuckBattleBootstrap extends Component {
     const transform = node.addComponent(UITransform);
     transform.setContentSize(this.screenWidth, this.screenHeight);
     this.aimGraphics = node.addComponent(Graphics);
+    this.aimPowerLabel = this.addLabel(
+      'AimPowerLabel', '力度 0%', 0, this.launchY - 69, 17,
+      new Color(40, 101, 150, 255), this.screenWidth * 0.45, 28,
+    );
+    this.aimPowerLabel.node.active = false;
   }
 
   private createHud(): void {
@@ -1126,18 +1139,22 @@ export class PuckBattleBootstrap extends Component {
       puckPosition.y,
     );
 
-    if (distance > this.puckRadius * 2.5) return;
+    if (distance > this.puckRadius * AIM_CONFIG.touchRadiusMultiplier) return;
 
     this.isDragging = true;
     this.state = GameState.AIMING;
     this.dragStart = new Vec2(puckPosition.x, puckPosition.y);
+    this.dragTouchStart = point;
     this.dragCurrent = point;
     this.drawAim();
   }
 
   private onTouchMove(event: EventTouch): void {
     if (!this.isDragging || this.state !== GameState.AIMING) return;
-    this.dragCurrent = this.getCanvasPoint(event);
+    const next = this.getCanvasPoint(event);
+    if (distanceBetween(next.x, next.y, this.dragCurrent.x, this.dragCurrent.y) <
+        AIM_CONFIG.moveRedrawThreshold) return;
+    this.dragCurrent = next;
     this.drawAim();
   }
 
@@ -1148,25 +1165,21 @@ export class PuckBattleBootstrap extends Component {
     this.isDragging = false;
     this.clearAim();
 
-    const dx = this.dragStart.x - this.dragCurrent.x;
-    const dy = this.dragStart.y - this.dragCurrent.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
     const puck = this.currentPuck;
     const ammo = this.currentAmmo;
-    if (distance < PUCK_CONFIG.minPullDistance || !puck || !ammo) {
+    const aim = calculateAim(
+      this.dragTouchStart.x, this.dragTouchStart.y,
+      this.dragCurrent.x, this.dragCurrent.y,
+      ammo?.launchSpeedMultiplier ?? 1,
+    );
+    if (!aim.ready || !puck || !ammo) {
       this.state = GameState.READY;
       return;
     }
 
-    const power = Math.min(distance / PUCK_CONFIG.maxPullDistance, 1);
-    const speed = PUCK_CONFIG.maxLaunchSpeed *
-      power *
-      ammo.launchSpeedMultiplier;
-
     const velocity = new Vec2(
-      (dx / distance) * speed,
-      (dy / distance) * speed,
+      aim.directionX * aim.speed,
+      aim.directionY * aim.speed,
     );
 
     this.scoreBeforeShot = this.totalScore;
@@ -1207,15 +1220,22 @@ export class PuckBattleBootstrap extends Component {
     graphics.clear();
     graphics.node.setSiblingIndex(this.node.children.length - 1);
 
-    const dx = this.dragStart.x - this.dragCurrent.x;
-    const dy = this.dragStart.y - this.dragCurrent.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    if (distance < 1) return;
+    const aim = calculateAim(
+      this.dragTouchStart.x, this.dragTouchStart.y,
+      this.dragCurrent.x, this.dragCurrent.y,
+      this.currentAmmo?.launchSpeedMultiplier ?? 1,
+    );
+    if (this.aimPowerLabel) {
+      this.aimPowerLabel.node.active = true;
+      this.aimPowerLabel.string = aim.ready
+        ? '发射力度 ' + Math.round(aim.strength * 100) + '%'
+        : '继续向后拖动来瞄准';
+    }
+    if (aim.distance < 1) return;
 
-    const power = Math.min(distance / PUCK_CONFIG.maxPullDistance, 1);
-    const length = 65 + power * 115;
-    const endX = this.dragStart.x + (dx / distance) * length;
-    const endY = this.dragStart.y + (dy / distance) * length;
+    const length = 65 + aim.strength * 130;
+    const endX = this.dragStart.x + aim.directionX * length;
+    const endY = this.dragStart.y + aim.directionY * length;
 
     graphics.lineWidth = 5;
     graphics.strokeColor = new Color(255, 255, 255, 245);
@@ -1223,7 +1243,7 @@ export class PuckBattleBootstrap extends Component {
     graphics.lineTo(endX, endY);
     graphics.stroke();
 
-    const angle = Math.atan2(dy, dx);
+    const angle = Math.atan2(aim.directionY, aim.directionX);
     const headLength = 17;
     graphics.fillColor = new Color(255, 255, 255, 245);
     graphics.moveTo(endX, endY);
@@ -1248,12 +1268,13 @@ export class PuckBattleBootstrap extends Component {
     graphics.fill();
 
     graphics.fillColor = new Color(74, 169, 225, 255);
-    graphics.rect(barX, barY, barWidth * power, barHeight);
+    graphics.rect(barX, barY, barWidth * aim.strength, barHeight);
     graphics.fill();
   }
 
   private clearAim(): void {
     this.aimGraphics?.clear();
+    if (this.aimPowerLabel) this.aimPowerLabel.node.active = false;
   }
 
   private stopAllPucks(): void {
