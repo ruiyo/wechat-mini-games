@@ -31,6 +31,8 @@ import { WORD_DEFINITIONS } from './WordDictionary';
 const { ccclass } = _decorator;
 
 enum GameState {
+  MENU,
+  PAUSED,
   WORD_SELECT,
   READY,
   AIMING,
@@ -62,7 +64,8 @@ export class PuckBattleBootstrap extends Component {
   private puckRadius = PUCK_CONFIG.puckRadius;
   private scoreRadii = { center: 34, middle: 76, outer: 122 };
 
-  private state = GameState.WORD_SELECT;
+  private state = GameState.MENU;
+  private pausedFrom = GameState.WORD_SELECT;
   private pucks: PuckEntry[] = [];
   private currentPuck: PuckEntry | null = null;
   private currentAmmo: AmmoDefinition | null = null;
@@ -104,6 +107,12 @@ export class PuckBattleBootstrap extends Component {
   private wordBookButtonNode: Node | null = null;
   private wordBookButtonLabel: Label | null = null;
   private wordBookOverlay: Node | null = null;
+  private menuOverlay: Node | null = null;
+  private helpOverlay: Node | null = null;
+  private pauseOverlay: Node | null = null;
+  private resultOverlay: Node | null = null;
+  private pauseButtonNode: Node | null = null;
+  private menuBestLabel: Label | null = null;
   private wordBookContentLabel: Label | null = null;
   private tileNodes: Node[] = [];
   private tileGraphics: Graphics[] = [];
@@ -171,6 +180,10 @@ export class PuckBattleBootstrap extends Component {
     this.createHud();
     this.createWordPanel();
     this.createWordBookOverlay();
+    this.createMenuOverlay();
+    this.createHelpOverlay();
+    this.createPauseOverlay();
+    this.createResultOverlay();
 
     this.bestScore = SaveManager.getBestScore();
     this.discoveredWordCount = 0;
@@ -192,7 +205,7 @@ export class PuckBattleBootstrap extends Component {
       }
     }
 
-    this.startRun();
+    this.showHome();
   }
 
   onDestroy(): void {
@@ -603,6 +616,12 @@ export class PuckBattleBootstrap extends Component {
       new Color(190, 72, 72, 255), this.screenWidth * 0.92, 100,
     );
     this.warningLabel.node.active = false;
+
+    this.pauseButtonNode = this.createActionButton(
+      this.node, 'PauseButton', '暂停',
+      this.screenWidth * 0.36, this.screenHeight * 0.38, 92, 44,
+    );
+    this.pauseButtonNode.active = false;
   }
 
   private createWordPanel(): void {
@@ -884,6 +903,186 @@ export class PuckBattleBootstrap extends Component {
     this.wordBookOverlay.setSiblingIndex(this.node.children.length - 1);
   }
 
+
+  private createFullScreenOverlay(name: string, opaque = false): Node {
+    const overlay = this.makeRenderNode(name);
+    this.node.addChild(overlay);
+    overlay.addComponent(UITransform).setContentSize(this.screenWidth, this.screenHeight);
+    const g = overlay.addComponent(Graphics);
+    g.fillColor = opaque
+      ? new Color(232, 245, 255, 255)
+      : new Color(23, 55, 88, 172);
+    g.rect(-this.screenWidth / 2, -this.screenHeight / 2,
+      this.screenWidth, this.screenHeight);
+    g.fill();
+    overlay.active = false;
+    return overlay;
+  }
+
+  private createMenuOverlay(): void {
+    const overlay = this.createFullScreenOverlay('MainMenuOverlay', true);
+    const width = Math.min(this.screenWidth * 0.87, 630);
+    this.createPanel(overlay, 'MainMenuCard', 0, 0, width, 880, 34,
+      new Color(255, 255, 255, 252));
+    const title = this.addChildLabel(overlay, '词弹碰碰局', width - 40,
+      78, 47, new Color(47, 104, 146, 255));
+    title.node.setPosition(0, 316, 0);
+    const subtitle = this.addChildLabel(overlay, '组好词  ·  弹出惊喜',
+      width - 44, 40, 23, new Color(109, 146, 170, 255));
+    subtitle.node.setPosition(0, 246, 0);
+
+    const hero = this.makeRenderNode('MainMenuHero');
+    overlay.addChild(hero);
+    hero.setPosition(0, 100, 0);
+    hero.addComponent(UITransform).setContentSize(width - 80, 205);
+    const g = hero.addComponent(Graphics);
+    g.fillColor = new Color(239, 248, 255, 255);
+    g.roundRect(-(width - 95) / 2, -92, width - 95, 188, 24);
+    g.fill();
+    g.fillColor = new Color(255, 208, 102, 255);
+    g.circle(0, 9, 72); g.fill();
+    g.fillColor = new Color(114, 193, 235, 255);
+    g.circle(0, 9, 49); g.fill();
+    g.fillColor = new Color(255, 125, 141, 255);
+    g.circle(0, 9, 26); g.fill();
+    g.fillColor = new Color(255, 182, 91, 255);
+    g.circle(-151, -18, 25); g.fill();
+    g.fillColor = new Color(96, 178, 231, 255);
+    g.circle(152, 54, 23); g.fill();
+
+    const caption = this.addChildLabel(overlay, '选字组词  →  拖拽发射  →  命中得分',
+      width - 50, 40, 19, new Color(75, 119, 150, 255));
+    caption.node.setPosition(0, -27, 0);
+
+    this.createActionButton(overlay, 'MenuStartButton', '开始游戏',
+      0, -124, 322, 70, true);
+    this.createActionButton(overlay, 'MenuHowToButton', '玩法说明',
+      0, -214, 322, 61);
+    this.createActionButton(overlay, 'MenuBookButton', '词语图鉴',
+      0, -292, 322, 61);
+    this.menuBestLabel = this.addChildLabel(
+      overlay, '历史最高 0', width - 40, 34, 20, new Color(104, 144, 172, 255));
+    this.menuBestLabel.node.setPosition(0, -385, 0);
+    this.menuOverlay = overlay;
+  }
+
+  private createHelpOverlay(): void {
+    const overlay = this.createFullScreenOverlay('HowToOverlay');
+    const width = Math.min(this.screenWidth * 0.88, 640);
+    this.createPanel(overlay, 'HowToCard', 0, 0, width, 570, 28);
+    const title = this.addChildLabel(overlay, '怎么玩？',
+      width - 36, 60, 32, new Color(45, 95, 138, 255));
+    title.node.setPosition(0, 205, 0);
+    const steps = [
+      '① 在六张汉字卡中选两个字',
+      '② 组成词语，确认获得不同弹药',
+      '③ 按住圆盘向后拖动，观察力度条',
+      '④ 松开发射，越靠近靶心得分越高',
+      '⑤ 连击加分，失误累计五次结束',
+    ].join('\n\n');
+    const text = this.addChildLabel(overlay, steps, width - 70, 325,
+      21, new Color(76, 113, 145, 255));
+    text.horizontalAlign = Label.HorizontalAlign.LEFT;
+    text.lineHeight = 32;
+    text.node.setPosition(0, 4, 0);
+    this.createActionButton(overlay, 'HelpBackButton', '明白了',
+      0, -225, 240, 64, true);
+    this.helpOverlay = overlay;
+  }
+
+  private createPauseOverlay(): void {
+    const overlay = this.createFullScreenOverlay('PauseOverlay');
+    const width = Math.min(this.screenWidth * 0.82, 580);
+    this.createPanel(overlay, 'PauseCard', 0, 0, width, 525, 28);
+    const title = this.addChildLabel(overlay, '游戏暂停',
+      width - 50, 75, 36, new Color(48, 100, 145, 255));
+    title.node.setPosition(0, 173, 0);
+    const subtitle = this.addChildLabel(overlay, '停下来调整好方向，再继续挑战',
+      width - 60, 35, 18, new Color(110, 148, 169, 255));
+    subtitle.node.setPosition(0, 121, 0);
+    this.createActionButton(overlay, 'PauseResume', '继续游戏',
+      0, 22, 300, 70, true);
+    this.createActionButton(overlay, 'PauseRestart', '重新开始',
+      0, -78, 300, 64);
+    this.createActionButton(overlay, 'PauseHome', '返回主页',
+      0, -171, 300, 64);
+    this.pauseOverlay = overlay;
+  }
+
+  private createResultOverlay(): void {
+    const overlay = this.createFullScreenOverlay('ResultOverlay');
+    const width = Math.min(this.screenWidth * 0.89, 640);
+    this.createPanel(overlay, 'ResultCard', 0, 0, width, 540, 30);
+    const title = this.addChildLabel(overlay, '本局结算',
+      width - 40, 66, 36, new Color(48, 100, 145, 255));
+    title.node.setPosition(0, 194, 0);
+    this.resultLabel = this.addChildLabel(overlay, '', width - 52,
+      285, 26, new Color(59, 100, 135, 255));
+    this.resultLabel.lineHeight = 40;
+    this.resultLabel.node.setPosition(0, 28, 0);
+    this.createActionButton(overlay, 'ResultRestart', '再来一局',
+      -this.screenWidth * 0.18, -183, 224, 70, true);
+    this.createActionButton(overlay, 'ResultHome', '返回主页',
+      this.screenWidth * 0.18, -183, 224, 70);
+    this.resultOverlay = overlay;
+  }
+
+  private withinBox(
+    point: Vec2, x: number, y: number, width: number, height: number,
+  ): boolean {
+    return Math.abs(point.x - x) <= width / 2 &&
+      Math.abs(point.y - y) <= height / 2;
+  }
+
+  private showHome(): void {
+    PhysicsSystem2D.instance.enable = true;
+    this.isDragging = false;
+    this.clearAim();
+    this.state = GameState.MENU;
+    this.setWordPanelVisible(false);
+    if (this.ammoLabel) this.ammoLabel.node.active = false;
+    if (this.hintLabel) this.hintLabel.node.active = false;
+    if (this.pauseButtonNode) this.pauseButtonNode.active = false;
+    if (this.pauseOverlay) this.pauseOverlay.active = false;
+    if (this.helpOverlay) this.helpOverlay.active = false;
+    if (this.resultOverlay) this.resultOverlay.active = false;
+    if (this.wordBookOverlay) this.wordBookOverlay.active = false;
+    if (this.menuBestLabel) {
+      this.menuBestLabel.string = '历史最高分  ' + SaveManager.getBestScore();
+    }
+    if (this.menuOverlay) {
+      this.menuOverlay.active = true;
+      this.menuOverlay.setSiblingIndex(this.node.children.length - 1);
+    }
+  }
+
+  private pauseRun(): void {
+    if (this.state === GameState.MENU ||
+        this.state === GameState.RESULT || this.state === GameState.PAUSED) return;
+    this.pausedFrom = this.state === GameState.AIMING ? GameState.READY : this.state;
+    this.isDragging = false;
+    this.clearAim();
+    this.state = GameState.PAUSED;
+    PhysicsSystem2D.instance.enable = false;
+    if (this.pauseOverlay) {
+      this.pauseOverlay.active = true;
+      this.pauseOverlay.setSiblingIndex(this.node.children.length - 1);
+    }
+  }
+
+  private resumeRun(): void {
+    if (this.state !== GameState.PAUSED) return;
+    PhysicsSystem2D.instance.enable = true;
+    this.state = this.pausedFrom;
+    if (this.pauseOverlay) this.pauseOverlay.active = false;
+  }
+
+  private returnToHome(): void {
+    PhysicsSystem2D.instance.enable = true;
+    this.restartRun();
+    this.showHome();
+  }
+
   private setWordPanelVisible(visible: boolean): void {
     if (this.wordTitleLabel) this.wordTitleLabel.node.active = visible;
     if (this.wordPreviewLabel) this.wordPreviewLabel.node.active = visible;
@@ -1094,8 +1293,52 @@ export class PuckBattleBootstrap extends Component {
       return;
     }
 
-    if (this.state === GameState.RESULT) {
-      this.restartRun();
+    if (this.helpOverlay?.active) {
+      this.helpOverlay.active = false;
+      return;
+    }
+
+    if (this.menuOverlay?.active) {
+      if (this.withinBox(point, 0, -124, 322, 76)) {
+        this.startRun();
+      } else if (this.withinBox(point, 0, -214, 322, 65)) {
+        if (this.helpOverlay) {
+          this.helpOverlay.active = true;
+          this.helpOverlay.setSiblingIndex(this.node.children.length - 1);
+        }
+      } else if (this.withinBox(point, 0, -292, 322, 65)) {
+        this.openWordBook();
+      }
+      return;
+    }
+
+    if (this.pauseOverlay?.active) {
+      if (this.withinBox(point, 0, 22, 300, 76)) {
+        this.resumeRun();
+      } else if (this.withinBox(point, 0, -78, 300, 70)) {
+        this.resumeRun();
+        this.restartRun();
+      } else if (this.withinBox(point, 0, -171, 300, 70)) {
+        this.returnToHome();
+      }
+      return;
+    }
+
+    if (this.resultOverlay?.active) {
+      if (this.withinBox(point, -this.screenWidth * 0.18, -183, 224, 74)) {
+        this.startRun();
+      } else if (this.withinBox(point, this.screenWidth * 0.18, -183, 224, 74)) {
+        this.returnToHome();
+      }
+      return;
+    }
+
+    if (this.state === GameState.RESULT || this.state === GameState.PAUSED) return;
+
+    if (this.pauseButtonNode?.active && this.withinBox(
+      point, this.screenWidth * 0.36, this.screenHeight * 0.38, 108, 56,
+    )) {
+      this.pauseRun();
       return;
     }
 
@@ -1343,18 +1586,18 @@ export class PuckBattleBootstrap extends Component {
 
     if (this.resultLabel) {
       this.resultLabel.string =
-        '本局得分  ' + this.totalScore +
-        (newBest ? '\n新纪录！' : '') +
-        '\n发射次数：' + this.shotsFired +
-        '\n本局发现词语：' + this.discoveredWordCount +
-        '\n\n点击屏幕重新开始';
-      this.resultLabel.node.active = true;
-      this.resultLabel.node.setSiblingIndex(this.node.children.length - 1);
+        '得分  ' + this.totalScore +
+        (newBest ? '\n恭喜打破最高纪录！' : '') +
+        '\n发射次数  ' + this.shotsFired +
+        '\n本局收录词语  ' + this.discoveredWordCount +
+        '\n历史最高  ' + this.bestScore;
     }
-
-    if (this.hintLabel) {
-      this.hintLabel.string = '连续失误达到上限，本局结束';
+    if (this.pauseButtonNode) this.pauseButtonNode.active = false;
+    if (this.resultOverlay) {
+      this.resultOverlay.active = true;
+      this.resultOverlay.setSiblingIndex(this.node.children.length - 1);
     }
+    if (this.hintLabel) this.hintLabel.string = '本局结束';
     this.updateHud();
   }
 
@@ -1380,7 +1623,8 @@ export class PuckBattleBootstrap extends Component {
     this.wordPuzzle.reset();
     this.state = GameState.WORD_SELECT;
 
-    if (this.resultLabel) this.resultLabel.node.active = false;
+    if (this.resultOverlay) this.resultOverlay.active = false;
+    if (this.resultLabel) this.resultLabel.node.active = true;
     this.clearAim();
     this.showWordState();
     this.updateHud();
@@ -1411,16 +1655,13 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private startRun(): void {
-    this.wordPuzzle.reset();
-    this.runDiscoveredWords.clear();
-    this.discoveredWordCount = 0;
-    this.shotsFired = 0;
-    this.totalScore = 0;
-    this.bankedScore = 0;
-    this.comboStreak = 0;
-    this.missCount = 0;
-    this.state = GameState.WORD_SELECT;
-    this.showWordState();
-    this.updateHud();
+    PhysicsSystem2D.instance.enable = true;
+    if (this.menuOverlay) this.menuOverlay.active = false;
+    if (this.helpOverlay) this.helpOverlay.active = false;
+    if (this.pauseOverlay) this.pauseOverlay.active = false;
+    if (this.resultOverlay) this.resultOverlay.active = false;
+    if (this.pauseButtonNode) this.pauseButtonNode.active = true;
+    if (this.hintLabel) this.hintLabel.node.active = true;
+    this.restartRun();
   }
 }
