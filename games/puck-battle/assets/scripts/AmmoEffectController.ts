@@ -13,7 +13,13 @@ export class AmmoEffectController {
     body.fixedRotation = true;
     body.allowSleep = true;
     body.bullet = true;
+    // Canvas rendering layers are independent of the 2D collision group.
+    body.group = 1;
+    // Box2D needs this flag for BEGIN_CONTACT events.
+    body.enabledContactListener = true;
 
+    collider.group = 1;
+    collider.sensor = false;
     collider.density = ammo.density;
     collider.friction = ammo.friction;
     collider.restitution = ammo.restitution;
