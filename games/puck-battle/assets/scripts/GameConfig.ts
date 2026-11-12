@@ -23,9 +23,9 @@ export const WORD_UI_CONFIG = {
   wordBookButtonXRatio: 0.36,
   wordBookButtonWidth: 112,
   wordBookButtonHeight: 48,
-  tileYRatio: 0.36,
-  previewYRatio: 0.425,
-  confirmYRatio: 0.475,
+  tileYRatio: 0.35,
+  previewYRatio: 0.404,
+  confirmYRatio: 0.449,
 } as const;
 
 /** Keeps short drags deliberate and gives medium pulls finer speed control. */

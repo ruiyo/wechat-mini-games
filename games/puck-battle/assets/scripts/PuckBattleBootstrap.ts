@@ -134,14 +134,14 @@ export class PuckBattleBootstrap extends Component {
       820,
     );
     // A compact playfield leaves independent space for word cards and safe-area controls.
-    this.arenaCenterY = this.screenHeight * 0.038;
+    this.arenaCenterY = this.screenHeight * 0.022;
     this.targetCenter = new Vec2(
       0,
       this.arenaCenterY + this.arenaHeight * 0.285,
     );
     this.launchY = this.arenaCenterY - this.arenaHeight * 0.345;
 
-    const outer = Math.min(this.arenaWidth * 0.22, 132);
+    const outer = Math.min(this.arenaWidth * 0.195, 112);
     this.scoreRadii = {
       center: outer * 0.28,
       middle: outer * 0.62,
@@ -269,27 +269,74 @@ export class PuckBattleBootstrap extends Component {
     return node;
   }
 
+  private createPanel(
+    parent: Node, name: string, x: number, y: number,
+    width: number, height: number, radius: number,
+    fill: Color = new Color(255, 255, 255, 255),
+    outline: Color = new Color(193, 222, 240, 255),
+  ): Node {
+    const node = this.makeRenderNode(name);
+    parent.addChild(node);
+    node.setPosition(x, y, 0);
+    node.addComponent(UITransform).setContentSize(width, height);
+    const g = node.addComponent(Graphics);
+    g.fillColor = new Color(52, 102, 145, 26);
+    g.roundRect(-width / 2, -height / 2 - 5, width, height, radius);
+    g.fill();
+    g.fillColor = fill;
+    g.roundRect(-width / 2, -height / 2, width, height, radius);
+    g.fill();
+    g.lineWidth = 2;
+    g.strokeColor = outline;
+    g.roundRect(-width / 2, -height / 2, width, height, radius);
+    g.stroke();
+    return node;
+  }
+
+  private createActionButton(
+    parent: Node, name: string, title: string, x: number, y: number,
+    width: number, height: number, accent = false,
+  ): Node {
+    const node = this.makeRenderNode(name);
+    parent.addChild(node);
+    node.setPosition(x, y, 0);
+    node.addComponent(UITransform).setContentSize(width, height);
+    const g = node.addComponent(Graphics);
+    g.fillColor = new Color(30, 83, 122, 33);
+    g.roundRect(-width / 2, -height / 2 - 4, width, height, 18);
+    g.fill();
+    g.fillColor = accent
+      ? new Color(255, 186, 96, 255)
+      : new Color(75, 159, 215, 255);
+    g.roundRect(-width / 2, -height / 2, width, height, 18);
+    g.fill();
+    this.addChildLabel(
+      node, title, width - 16, height - 6,
+      Math.min(24, height * 0.38),
+      accent ? new Color(69, 66, 77, 255) : Color.WHITE,
+    );
+    return node;
+  }
+
   private createBackground(): void {
     const node = this.makeRenderNode('Background');
     this.node.addChild(node);
-    const transform = node.addComponent(UITransform);
-    transform.setContentSize(this.screenWidth, this.screenHeight);
-
-    const graphics = node.addComponent(Graphics);
-    graphics.fillColor = new Color(226, 242, 255, 255);
-    graphics.rect(
-      -this.screenWidth / 2,
-      -this.screenHeight / 2,
-      this.screenWidth,
-      this.screenHeight,
-    );
-    graphics.fill();
-
-    graphics.fillColor = new Color(255, 255, 255, 90);
-    graphics.circle(-this.screenWidth * 0.34, this.screenHeight * 0.36, 54);
-    graphics.fill();
-    graphics.circle(this.screenWidth * 0.36, -this.screenHeight * 0.35, 72);
-    graphics.fill();
+    node.addComponent(UITransform).setContentSize(this.screenWidth, this.screenHeight);
+    const g = node.addComponent(Graphics);
+    g.fillColor = new Color(232, 246, 254, 255);
+    g.rect(-this.screenWidth / 2, -this.screenHeight / 2,
+      this.screenWidth, this.screenHeight);
+    g.fill();
+    g.fillColor = new Color(192, 225, 248, 108);
+    g.circle(-this.screenWidth * 0.37, this.screenHeight * 0.28, 90);
+    g.fill();
+    g.circle(this.screenWidth * 0.37, -this.screenHeight * 0.30, 85);
+    g.fill();
+    g.fillColor = new Color(255, 255, 255, 145);
+    g.circle(this.screenWidth * 0.34, this.screenHeight * 0.15, 28);
+    g.fill();
+    g.circle(-this.screenWidth * 0.31, -this.screenHeight * 0.18, 25);
+    g.fill();
   }
 
   private createArenaVisuals(): void {
@@ -301,33 +348,30 @@ export class PuckBattleBootstrap extends Component {
     transform.setContentSize(this.arenaWidth, this.arenaHeight);
 
     const graphics = arenaNode.addComponent(Graphics);
-    graphics.fillColor = new Color(250, 253, 255, 255);
-    graphics.rect(
-      -this.arenaWidth / 2,
-      -this.arenaHeight / 2,
-      this.arenaWidth,
-      this.arenaHeight,
-    );
+    graphics.fillColor = new Color(51, 108, 153, 28);
+    graphics.roundRect(-this.arenaWidth / 2, -this.arenaHeight / 2 - 6,
+      this.arenaWidth, this.arenaHeight, 25);
     graphics.fill();
-
-    graphics.lineWidth = 6;
-    graphics.strokeColor = new Color(126, 174, 210, 255);
-    graphics.rect(
-      -this.arenaWidth / 2,
-      -this.arenaHeight / 2,
-      this.arenaWidth,
-      this.arenaHeight,
-    );
+    graphics.fillColor = new Color(250, 253, 255, 255);
+    graphics.roundRect(-this.arenaWidth / 2, -this.arenaHeight / 2,
+      this.arenaWidth, this.arenaHeight, 25);
+    graphics.fill();
+    graphics.lineWidth = 5;
+    graphics.strokeColor = new Color(140, 191, 228, 255);
+    graphics.roundRect(-this.arenaWidth / 2, -this.arenaHeight / 2,
+      this.arenaWidth, this.arenaHeight, 25);
     graphics.stroke();
 
     graphics.lineWidth = 2;
-    graphics.strokeColor = new Color(190, 216, 237, 255);
-    graphics.moveTo(0, -this.arenaHeight * 0.30);
-    graphics.lineTo(0, this.arenaHeight * 0.22);
+    graphics.strokeColor = new Color(210, 232, 245, 255);
+    graphics.moveTo(0, -this.arenaHeight * 0.305);
+    graphics.lineTo(0, this.arenaHeight * 0.17);
     graphics.stroke();
-
-    graphics.fillColor = new Color(215, 235, 249, 255);
-    graphics.circle(0, -this.arenaHeight * 0.365, 32);
+    graphics.fillColor = new Color(210, 237, 252, 255);
+    graphics.circle(0, -this.arenaHeight * 0.345, 30);
+    graphics.fill();
+    graphics.fillColor = new Color(239, 249, 253, 255);
+    graphics.circle(0, -this.arenaHeight * 0.345, 17);
     graphics.fill();
 
     const targetNode = this.makeRenderNode('ScoringTarget');
@@ -365,7 +409,7 @@ export class PuckBattleBootstrap extends Component {
       'TargetHint',
       '外圈10分  ·  中圈30分  ·  中心50分',
       0,
-      this.targetCenter.y + this.scoreRadii.outer + 24,
+      this.targetCenter.y + this.scoreRadii.outer + 13,
       16,
       new Color(72, 112, 143, 255),
       this.screenWidth * 0.9,
@@ -374,7 +418,7 @@ export class PuckBattleBootstrap extends Component {
 
     this.addLabel(
       'LaunchHint',
-      '从下方向目标发射',
+      '拖动圆盘 · 松开发射',
       0,
       this.launchY - 43,
       17,
@@ -510,135 +554,65 @@ export class PuckBattleBootstrap extends Component {
     transform.setContentSize(this.screenWidth, this.screenHeight);
     this.aimGraphics = node.addComponent(Graphics);
     this.aimPowerLabel = this.addLabel(
-      'AimPowerLabel', '力度 0%', 0, this.launchY - 69, 17,
+      'AimPowerLabel', '力度 0%', 0, this.launchY - 65, 17,
       new Color(40, 101, 150, 255), this.screenWidth * 0.45, 28,
     );
     this.aimPowerLabel.node.active = false;
   }
 
   private createHud(): void {
-    const topY = this.screenHeight * 0.445;
+    this.createPanel(this.node, 'HudCard', 0, this.screenHeight * 0.344,
+      this.screenWidth * 0.92, 164, 22, new Color(255, 255, 255, 247));
 
     this.addLabel(
-      'GameTitleLabel',
-      '词弹碰碰局',
-      0,
-      this.screenHeight * 0.46,
-      30,
-      new Color(43, 91, 130, 255),
-      this.screenWidth * 0.9,
-      42,
+      'GameTitleLabel', '词弹碰碰局', 0, this.screenHeight * 0.380,
+      30, new Color(44, 91, 129, 255), this.screenWidth * 0.63, 45,
     );
-
     this.scoreLabel = this.addLabel(
-      'ScoreLabel',
-      '总分 0',
-      -this.screenWidth * 0.25,
-      topY,
-      27,
-      new Color(48, 86, 119, 255),
-      this.screenWidth * 0.44,
-      48,
+      'ScoreLabel', '总分 0', -this.screenWidth * 0.24, this.screenHeight * 0.342,
+      27, new Color(46, 93, 132, 255), this.screenWidth * 0.45, 42,
     );
-
     this.shotsLabel = this.addLabel(
-      'ShotsLabel',
-      '发射 0',
-      this.screenWidth * 0.25,
-      topY,
-      27,
-      new Color(48, 86, 119, 255),
-      this.screenWidth * 0.44,
-      48,
+      'ShotsLabel', '发射 0', this.screenWidth * 0.23, this.screenHeight * 0.342,
+      21, new Color(62, 113, 151, 255), this.screenWidth * 0.37, 42,
     );
-
     this.bestLabel = this.addLabel(
-      'BestLabel',
-      '最高纪录 0',
-      0,
-      topY - 44,
-      17,
-      new Color(92, 132, 164, 255),
-      this.screenWidth * 0.8,
-      28,
+      'BestLabel', '最高 0', -this.screenWidth * 0.265, this.screenHeight * 0.304,
+      16, new Color(104, 148, 177, 255), this.screenWidth * 0.31, 28,
     );
-
     this.comboLabel = this.addLabel(
-      'ComboLabel',
-      '连击 ×0',
-      -this.screenWidth * 0.20,
-      topY - 76,
-      18,
-      new Color(231, 143, 63, 255),
-      this.screenWidth * 0.38,
-      28,
+      'ComboLabel', '连击 ×0', 0, this.screenHeight * 0.304,
+      17, new Color(226, 145, 62, 255), this.screenWidth * 0.30, 28,
     );
-
     this.missLabel = this.addLabel(
-      'MissLabel',
-      '失误 0/5',
-      this.screenWidth * 0.20,
-      topY - 76,
-      18,
-      new Color(210, 105, 105, 255),
-      this.screenWidth * 0.38,
-      28,
+      'MissLabel', '失误 0/5', this.screenWidth * 0.275, this.screenHeight * 0.304,
+      17, new Color(215, 96, 100, 255), this.screenWidth * 0.28, 28,
     );
-
     this.hintLabel = this.addLabel(
-      'HintLabel',
-      '选择两个汉字，组合你的弹药',
-      0,
-      -this.screenHeight * 0.315,
-      18,
-      new Color(58, 105, 145, 255),
-      this.screenWidth * 0.92,
-      34,
+      'HintLabel', '选择两个汉字，组合你的弹药', 0,
+      -this.screenHeight * 0.255, 18, new Color(53, 104, 145, 255),
+      this.screenWidth * 0.92, 34,
     );
-
     this.ammoLabel = this.addLabel(
-      'AmmoLabel',
-      '',
-      0,
-      -this.screenHeight * 0.425,
-      20,
-      new Color(57, 103, 145, 255),
-      this.screenWidth * 0.92,
-      34,
+      'AmmoLabel', '', 0, -this.screenHeight * 0.416, 18,
+      new Color(57, 102, 142, 255), this.screenWidth * 0.88, 50,
     );
     this.ammoLabel.node.active = false;
-
-    this.resultLabel = this.addLabel(
-      'ResultLabel',
-      '',
-      0,
-      0,
-      29,
-      new Color(41, 75, 105, 255),
-      this.screenWidth * 0.88,
-      230,
-    );
-    this.resultLabel.node.active = false;
-
     this.warningLabel = this.addLabel(
-      'PhysicsWarning',
-      '',
-      0,
-      this.screenHeight * 0.20,
-      19,
-      new Color(190, 72, 72, 255),
-      this.screenWidth * 0.92,
-      100,
+      'PhysicsWarning', '', 0, this.screenHeight * 0.18, 19,
+      new Color(190, 72, 72, 255), this.screenWidth * 0.92, 100,
     );
     this.warningLabel.node.active = false;
   }
 
   private createWordPanel(): void {
+    this.createPanel(this.node, 'WordTray', 0, -this.screenHeight * 0.372,
+      this.screenWidth * 0.92, 258, 24, new Color(252, 254, 255, 248));
     this.wordTitleLabel = this.addLabel(
       'WordTitle',
       '组词装弹',
       0,
-      -this.screenHeight * 0.285,
+      -this.screenHeight * 0.298,
       24,
       new Color(49, 91, 127, 255),
       this.screenWidth * 0.9,
@@ -796,22 +770,22 @@ export class PuckBattleBootstrap extends Component {
       graphics.fillColor = isSelected
         ? new Color(255, 220, 143, 255)
         : new Color(255, 255, 255, 255);
-      graphics.rect(
+      graphics.roundRect(
         -WORD_UI_CONFIG.tileWidth / 2,
         -WORD_UI_CONFIG.tileHeight / 2,
         WORD_UI_CONFIG.tileWidth,
-        WORD_UI_CONFIG.tileHeight,
+        WORD_UI_CONFIG.tileHeight, 12,
       );
       graphics.fill();
       graphics.lineWidth = isSelected ? 4 : 2;
       graphics.strokeColor = isSelected
         ? new Color(239, 155, 62, 255)
         : new Color(173, 204, 227, 255);
-      graphics.rect(
+      graphics.roundRect(
         -WORD_UI_CONFIG.tileWidth / 2,
         -WORD_UI_CONFIG.tileHeight / 2,
         WORD_UI_CONFIG.tileWidth,
-        WORD_UI_CONFIG.tileHeight,
+        WORD_UI_CONFIG.tileHeight, 12,
       );
       graphics.stroke();
       this.tileLabels[i].string = letters[i] || '';
@@ -827,7 +801,7 @@ export class PuckBattleBootstrap extends Component {
       this.confirmGraphics.fillColor = canConfirm
         ? new Color(65, 164, 119, 255)
         : new Color(166, 190, 207, 255);
-      this.confirmGraphics.rect(-110, -24, 220, 48);
+      this.confirmGraphics.roundRect(-110, -24, 220, 48, 15);
       this.confirmGraphics.fill();
     }
     this.updateWordBookButton();
@@ -877,11 +851,11 @@ export class PuckBattleBootstrap extends Component {
     panelTransform.setContentSize(panelWidth, panelHeight);
     const panelGraphics = panel.addComponent(Graphics);
     panelGraphics.fillColor = new Color(250, 253, 255, 255);
-    panelGraphics.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight);
+    panelGraphics.roundRect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight, 22);
     panelGraphics.fill();
     panelGraphics.lineWidth = 5;
     panelGraphics.strokeColor = new Color(110, 166, 202, 255);
-    panelGraphics.rect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight);
+    panelGraphics.roundRect(-panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight, 22);
     panelGraphics.stroke();
 
     const title = this.addChildLabel(panel, '词语图鉴', panelWidth - 48, 44, 27, new Color(48, 91, 126, 255));
@@ -907,6 +881,7 @@ export class PuckBattleBootstrap extends Component {
     if (!this.wordBookOverlay) return;
     if (this.wordBookContentLabel) this.wordBookContentLabel.string = this.buildWordBookText();
     this.wordBookOverlay.active = true;
+    this.wordBookOverlay.setSiblingIndex(this.node.children.length - 1);
   }
 
   private setWordPanelVisible(visible: boolean): void {
@@ -1060,6 +1035,9 @@ export class PuckBattleBootstrap extends Component {
     transform.setContentSize(this.puckRadius * 2, this.puckRadius * 2);
 
     const graphics = node.addComponent(Graphics);
+    graphics.fillColor = new Color(28, 65, 99, 32);
+    graphics.circle(2, -4, this.puckRadius + 3);
+    graphics.fill();
     graphics.fillColor = new Color(
       ammo.color[0],
       ammo.color[1],
@@ -1261,7 +1239,7 @@ export class PuckBattleBootstrap extends Component {
     const barWidth = 170;
     const barHeight = 10;
     const barX = -barWidth / 2;
-    const barY = this.launchY - 76;
+    const barY = this.launchY - 94;
 
     graphics.fillColor = new Color(190, 215, 235, 220);
     graphics.rect(barX, barY, barWidth, barHeight);
