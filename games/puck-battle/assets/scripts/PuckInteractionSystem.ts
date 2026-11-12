@@ -7,6 +7,7 @@ import {
   INTERACTION_CONFIG, calculatePuckContact, calculateImpactPush,
   calculateMagnetDeltaVelocity,
 } from './PuckInteractionRules';
+import { StableColliderRegistry } from './StableColliderRegistry';
 
 export interface InteractionPuck {
   readonly node: Node;
@@ -45,7 +46,7 @@ interface HitPulse {
  * No rigid body is modified while Box2D is resolving its contact manifold.
  */
 export class PuckInteractionSystem {
-  private readonly registered = new Map<Collider2D, InteractionPuck>();
+  private readonly registered = new StableColliderRegistry<Collider2D, InteractionPuck>();
   private active: InteractionPuck | null = null;
   private pending: QueuedContact[] = [];
   private readonly lastContact = new Map<string, number>();
@@ -57,15 +58,36 @@ export class PuckInteractionSystem {
   get collisionCount(): number { return this.collisions; }
 
   register(puck: InteractionPuck): void {
-    this.registered.set(puck.collider, puck);
-    puck.collider.on(Contact2DType.BEGIN_CONTACT, this.onPuckBeginContact, this);
+    const collider = puck && puck.collider;
+    if (!collider || typeof collider.on !== 'function') {
+      console.warn('[WordPuck] Skipped invalid puck contact collider');
+      return;
+    }
+    // Calling register twice must never attach duplicate contact listeners.
+    if (!this.registered.add(collider, puck)) return;
+    collider.on(Contact2DType.BEGIN_CONTACT, this.onPuckBeginContact, this);
+  }
+
+  /** Event teardown is safe even when the component was already destroyed. */
+  private detachContactListener(collider: Collider2D | null | undefined): void {
+    if (!collider || typeof collider.off !== 'function') return;
+    try {
+      collider.off(Contact2DType.BEGIN_CONTACT, this.onPuckBeginContact, this);
+    } catch (error) {
+      console.warn('[WordPuck] Unable to detach destroyed puck collider:', error);
+    }
   }
 
   unregister(puck: InteractionPuck): void {
-    puck.collider.off(Contact2DType.BEGIN_CONTACT, this.onPuckBeginContact, this);
-    this.registered.delete(puck.collider);
-    this.pending = this.pending.filter((c) => c.source !== puck && c.target !== puck);
-    if (this.active === puck) this.active = null;
+    const collider = puck && puck.collider;
+    if (!collider) return;
+    const previous = this.registered.remove(collider);
+    if (!previous) return; // Already removed, or never registered.
+    this.detachContactListener(collider);
+    this.pending = this.pending.filter(
+      (c) => c.source !== previous && c.target !== previous,
+    );
+    if (this.active === previous) this.active = null;
   }
 
   beginShot(puck: InteractionPuck): void {
@@ -79,7 +101,7 @@ export class PuckInteractionSystem {
     this.active = null;
     this.pending.length = 0;
     this.lastContact.clear();
-    for (const puck of this.registered.values()) {
+    for (const puck of this.registered.snapshot()) {
       if (puck.freezeRemaining > 0) {
         puck.freezeRemaining = 0;
         puck.body.linearDamping = puck.ammo.linearDamping;
@@ -89,10 +111,19 @@ export class PuckInteractionSystem {
 
   reset(): void {
     this.endShot();
-    for (const puck of [...this.registered.values()]) this.unregister(puck);
+    // The old [...Map.values()] is not reliable after Cocos transpiles for
+    // legacy JavaScript targets. Clear via a normal Array snapshot.
+    const removed = this.registered.clear();
+    for (const puck of removed) {
+      if (puck) this.detachContactListener(puck.collider);
+    }
+    this.active = null;
+    this.pending.length = 0;
+    this.lastContact.clear();
     this.pulses.length = 0;
     this.collisions = 0;
     this.elapsed = 0;
+    this.drawElapsed = 0;
   }
 
   /** The filter excludes walls and bumpers: a contact counts only for two registered pucks. */
@@ -174,7 +205,7 @@ export class PuckInteractionSystem {
       feedback.push({ text, color, x: c.x, y: c.y });
     }
 
-    for (const puck of this.registered.values()) {
+    for (const puck of this.registered.snapshot()) {
       if (puck.freezeRemaining <= 0) continue;
       puck.freezeRemaining = Math.max(0, puck.freezeRemaining - deltaTime);
       if (puck.freezeRemaining > 0) {
@@ -187,7 +218,7 @@ export class PuckInteractionSystem {
     const magnet = this.active;
     if (magnet.ammo.type === 'magnet' &&
         Math.hypot(magnet.body.linearVelocity.x, magnet.body.linearVelocity.y) >= 35) {
-      for (const other of this.registered.values()) {
+      for (const other of this.registered.snapshot()) {
         if (other === magnet) continue;
         const dv = calculateMagnetDeltaVelocity(
           magnet.node.position.x - other.node.position.x,
@@ -238,7 +269,7 @@ export class PuckInteractionSystem {
       graphics.circle(x, y, radius);
       graphics.stroke();
     }
-    for (const puck of this.registered.values()) {
+    for (const puck of this.registered.snapshot()) {
       const x = puck.node.position.x, y = puck.node.position.y;
       if (puck.freezeRemaining > 0) {
         graphics.lineWidth = 4;
