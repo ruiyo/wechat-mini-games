@@ -55,3 +55,7 @@ GitHub Actions 会在可信分支 Push 后自动执行：
 - MVP计划：../../docs/MVP_PLAN.md
 - 自动构建：../../docs/GITHUB_AUTOMATION.md
 - 本地启动说明：./COCOS_SETUP.md
+
+## 黑屏修复与渲染层
+
+所有运行时创建的背景、目标圈、文字、按钮和弹药节点，通过 `makeRenderNode()` 显式继承 Canvas 所在渲染层。Cocos Creator 新建节点默认位于 `DEFAULT` 层，而本工程 UI Camera 仅渲染 Canvas 层，因此不设置会造成微信小游戏 FPS 正常但整个画面黑屏。新增 `tests/logic/ui-render-layer.test.ts` 防止直接 `new Node()` 导致回归。

@@ -249,8 +249,20 @@ export class PuckBattleBootstrap extends Component {
     }
   }
 
+  /**
+   * The UI camera renders the Canvas layer, not the DEFAULT layer.
+   * New Cocos Nodes use DEFAULT (1 << 30) and do not inherit the
+   * parent's layer automatically. Keep every runtime-created visual
+   * and input target on the serialized Canvas layer.
+   */
+  private makeRenderNode(name: string): Node {
+    const node = new Node(name);
+    node.layer = this.node.layer;
+    return node;
+  }
+
   private createBackground(): void {
-    const node = new Node('Background');
+    const node = this.makeRenderNode('Background');
     this.node.addChild(node);
     const transform = node.addComponent(UITransform);
     transform.setContentSize(this.screenWidth, this.screenHeight);
@@ -273,7 +285,7 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private createArenaVisuals(): void {
-    const arenaNode = new Node('ArenaVisual');
+    const arenaNode = this.makeRenderNode('ArenaVisual');
     this.node.addChild(arenaNode);
     arenaNode.setPosition(0, this.arenaCenterY, 0);
 
@@ -310,7 +322,7 @@ export class PuckBattleBootstrap extends Component {
     graphics.circle(0, -this.arenaHeight * 0.365, 32);
     graphics.fill();
 
-    const targetNode = new Node('ScoringTarget');
+    const targetNode = this.makeRenderNode('ScoringTarget');
     this.node.addChild(targetNode);
     targetNode.setPosition(this.targetCenter.x, this.targetCenter.y, 0);
     const targetTransform = targetNode.addComponent(UITransform);
@@ -406,7 +418,7 @@ export class PuckBattleBootstrap extends Component {
     width: number,
     height: number,
   ): void {
-    const node = new Node(name);
+    const node = this.makeRenderNode(name);
     this.node.addChild(node);
     node.setPosition(x, y, 0);
 
@@ -456,7 +468,7 @@ export class PuckBattleBootstrap extends Component {
     radius: number,
     color: Color,
   ): void {
-    const node = new Node(name);
+    const node = this.makeRenderNode(name);
     this.node.addChild(node);
     node.setPosition(x, y, 0);
 
@@ -484,7 +496,7 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private createAimLayer(): void {
-    const node = new Node('AimLayer');
+    const node = this.makeRenderNode('AimLayer');
     this.node.addChild(node);
     const transform = node.addComponent(UITransform);
     transform.setContentSize(this.screenWidth, this.screenHeight);
@@ -629,7 +641,7 @@ export class PuckBattleBootstrap extends Component {
 
     for (let i = 0; i < 6; i += 1) {
       const x = startX + i * (tileWidth + gap);
-      const node = new Node('WordTile_' + i);
+      const node = this.makeRenderNode('WordTile_' + i);
       this.node.addChild(node);
       node.setPosition(x, tileY, 0);
 
@@ -637,7 +649,7 @@ export class PuckBattleBootstrap extends Component {
       transform.setContentSize(tileWidth, tileHeight);
 
       const graphics = node.addComponent(Graphics);
-      const labelNode = new Node('Letter');
+      const labelNode = this.makeRenderNode('Letter');
       node.addChild(labelNode);
       const labelTransform = labelNode.addComponent(UITransform);
       labelTransform.setContentSize(tileWidth, tileHeight);
@@ -666,7 +678,7 @@ export class PuckBattleBootstrap extends Component {
 
     const buttonWidth = 220;
     const buttonHeight = 48;
-    this.confirmNode = new Node('ConfirmWordButton');
+    this.confirmNode = this.makeRenderNode('ConfirmWordButton');
     this.node.addChild(this.confirmNode);
     this.confirmNode.setPosition(0, -this.screenHeight * WORD_UI_CONFIG.confirmYRatio, 0);
     const buttonTransform = this.confirmNode.addComponent(UITransform);
@@ -683,7 +695,7 @@ export class PuckBattleBootstrap extends Component {
 
     const bookButtonWidth = WORD_UI_CONFIG.wordBookButtonWidth;
     const bookButtonHeight = WORD_UI_CONFIG.wordBookButtonHeight;
-    this.wordBookButtonNode = new Node('WordBookButton');
+    this.wordBookButtonNode = this.makeRenderNode('WordBookButton');
     this.node.addChild(this.wordBookButtonNode);
     this.wordBookButtonNode.setPosition(
       this.screenWidth * WORD_UI_CONFIG.wordBookButtonXRatio,
@@ -720,7 +732,7 @@ export class PuckBattleBootstrap extends Component {
     fontSize: number,
     color: Color,
   ): Label {
-    const node = new Node('ButtonLabel');
+    const node = this.makeRenderNode('ButtonLabel');
     parent.addChild(node);
     const transform = node.addComponent(UITransform);
     transform.setContentSize(width, height);
@@ -743,7 +755,7 @@ export class PuckBattleBootstrap extends Component {
     width: number,
     height: number,
   ): Label {
-    const node = new Node(name);
+    const node = this.makeRenderNode(name);
     this.node.addChild(node);
     node.setPosition(x, y, 0);
 
@@ -834,7 +846,7 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private createWordBookOverlay(): void {
-    const overlay = new Node('WordBookOverlay');
+    const overlay = this.makeRenderNode('WordBookOverlay');
     this.node.addChild(overlay);
     overlay.setPosition(0, 0, 0);
     const overlayTransform = overlay.addComponent(UITransform);
@@ -846,7 +858,7 @@ export class PuckBattleBootstrap extends Component {
 
     const panelWidth = Math.min(620, this.screenWidth - 40);
     const panelHeight = 480;
-    const panel = new Node('WordBookPanel');
+    const panel = this.makeRenderNode('WordBookPanel');
     overlay.addChild(panel);
     const panelTransform = panel.addComponent(UITransform);
     panelTransform.setContentSize(panelWidth, panelHeight);
@@ -1027,7 +1039,7 @@ export class PuckBattleBootstrap extends Component {
     }
 
     const index = this.shotsFired;
-    const node = new Node('Ammo_' + index);
+    const node = this.makeRenderNode('Ammo_' + index);
     this.node.addChild(node);
     node.setPosition(selectedX, this.launchY, 0);
 
@@ -1048,7 +1060,7 @@ export class PuckBattleBootstrap extends Component {
     graphics.circle(0, 0, this.puckRadius);
     graphics.stroke();
 
-    const wordLabelNode = new Node('AmmoWord');
+    const wordLabelNode = this.makeRenderNode('AmmoWord');
     node.addChild(wordLabelNode);
     const wordTransform = wordLabelNode.addComponent(UITransform);
     wordTransform.setContentSize(this.puckRadius * 2, this.puckRadius * 2);
