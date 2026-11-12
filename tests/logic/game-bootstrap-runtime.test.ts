@@ -120,3 +120,23 @@ test('repeated practice restarts re-create two targets with no duplicate listene
   }
   game.onDestroy();
 });
+
+test('all four practice buttons create the intended ammo with unique colliders', () => {
+  const game = createGame();
+  tap(game, 0, -207);
+  const types = ['bounce', 'magnet', 'ice', 'impact'];
+  for (let i = 0; i < types.length; i += 1) {
+    const x = 720 * (-0.3 + i * 0.2);
+    tap(game, x, -1280 * WORD_UI_CONFIG.tileYRatio);
+    assert.equal(game.state, 3); // READY
+    assert.equal(game.currentPuck.ammo.type, types[i]);
+    assert.deepEqual(game.pucks.map((p: any) => p.index), [0, 1, 2]);
+    assert.equal(game.currentPuck.collider.listenerCount(Contact2DType.BEGIN_CONTACT), 1);
+    game.restartRun();
+    assert.equal(game.state, 2);
+    assert.equal(game.pucks.length, 2);
+  }
+  game.returnToHome();
+  assert.equal(game.practiceMode, false);
+  game.onDestroy();
+});
