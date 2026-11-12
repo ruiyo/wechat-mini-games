@@ -21,6 +21,10 @@ on:
       - "docs/GITHUB_AUTOMATION.md"
   workflow_dispatch:
 
+concurrency:
+  group: word-puck-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
