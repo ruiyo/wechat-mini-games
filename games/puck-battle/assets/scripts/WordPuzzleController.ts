@@ -46,6 +46,21 @@ export class WordPuzzleController {
     this.selectedIndices.push(index);
   }
 
+  /** Show a valid pair without using or replacing any characters. */
+  suggestWord(): WordDefinition | null {
+    for (let i = 0; i < this.letters.length; i++) {
+      for (let j = i + 1; j < this.letters.length; j++) {
+        const word = findWord(this.letters[i], this.letters[j]);
+        if (word) {
+          this.selectedIndices = [i, j];
+          return word;
+        }
+      }
+    }
+    this.selectedIndices = [];
+    return null;
+  }
+
   getSelectedWord(): WordDefinition | null {
     if (this.selectedIndices.length !== 2) return null;
     const first = this.letters[this.selectedIndices[0]];

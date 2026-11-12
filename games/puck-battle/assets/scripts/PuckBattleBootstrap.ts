@@ -19,7 +19,7 @@ import {
 } from 'cc';
 
 import { AIM_CONFIG, PUCK_CONFIG, WORD_UI_CONFIG } from './GameConfig';
-import { calculateAim } from './AimRules';
+import { calculateAim, predictWallBouncePath } from './AimRules';
 import { AmmoFactory } from './AmmoFactory';
 import type { AmmoDefinition } from './AmmoFactory';
 import { AmmoEffectController } from './AmmoEffectController';
@@ -82,6 +82,7 @@ export class PuckBattleBootstrap extends Component {
   private runDiscoveredWords = new Set<string>();
 
   private isDragging = false;
+  private activeTouchId: number | null = null;
   private dragStart = new Vec2();
   private dragTouchStart = new Vec2();
   private dragCurrent = new Vec2();
@@ -104,6 +105,8 @@ export class PuckBattleBootstrap extends Component {
   private confirmLabel: Label | null = null;
   private confirmGraphics: Graphics | null = null;
   private confirmNode: Node | null = null;
+  private wordTrayNode: Node | null = null;
+  private wordHintNode: Node | null = null;
   private wordBookButtonNode: Node | null = null;
   private wordBookButtonLabel: Label | null = null;
   private wordBookOverlay: Node | null = null;
@@ -625,7 +628,7 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private createWordPanel(): void {
-    this.createPanel(this.node, 'WordTray', 0, -this.screenHeight * 0.372,
+    this.wordTrayNode = this.createPanel(this.node, 'WordTray', 0, -this.screenHeight * 0.372,
       this.screenWidth * 0.92, 258, 24, new Color(252, 254, 255, 248));
     this.wordTitleLabel = this.addLabel(
       'WordTitle',
@@ -638,6 +641,12 @@ export class PuckBattleBootstrap extends Component {
       38,
     );
 
+    this.wordHintNode = this.createActionButton(
+      this.node, 'WordHintButton', '提示',
+      this.screenWidth * WORD_UI_CONFIG.hintButtonXRatio,
+      -this.screenHeight * WORD_UI_CONFIG.hintButtonYRatio,
+      WORD_UI_CONFIG.hintButtonWidth, WORD_UI_CONFIG.hintButtonHeight,
+    );
     const tileWidth = WORD_UI_CONFIG.tileWidth;
     const tileHeight = WORD_UI_CONFIG.tileHeight;
     const gap = WORD_UI_CONFIG.tileGap;
@@ -976,14 +985,15 @@ export class PuckBattleBootstrap extends Component {
     const steps = [
       '① 在六张汉字卡中选两个字',
       '② 组成词语，确认获得不同弹药',
-      '③ 按住圆盘向后拖动，观察力度条',
-      '④ 松开发射，越靠近靶心得分越高',
-      '⑤ 连击加分，失误累计五次结束',
-    ].join('\n\n');
+      '③ 需要帮助可点击组词区的「提示」',
+      '④ 按住圆盘向后拖动，看清轨迹和力度',
+      '⑤ 松开发射，越靠近靶心得分越高',
+      '⑥ 连击加分，失误累计五次结束',
+    ].join('\n');
     const text = this.addChildLabel(overlay, steps, width - 70, 325,
       21, new Color(76, 113, 145, 255));
     text.horizontalAlign = Label.HorizontalAlign.LEFT;
-    text.lineHeight = 32;
+    text.lineHeight = 40;
     text.node.setPosition(0, 4, 0);
     this.createActionButton(overlay, 'HelpBackButton', '明白了',
       0, -225, 240, 64, true);
@@ -1037,6 +1047,7 @@ export class PuckBattleBootstrap extends Component {
   private showHome(): void {
     PhysicsSystem2D.instance.enable = true;
     this.isDragging = false;
+    this.activeTouchId = null;
     this.clearAim();
     this.state = GameState.MENU;
     this.setWordPanelVisible(false);
@@ -1061,6 +1072,7 @@ export class PuckBattleBootstrap extends Component {
         this.state === GameState.RESULT || this.state === GameState.PAUSED) return;
     this.pausedFrom = this.state === GameState.AIMING ? GameState.READY : this.state;
     this.isDragging = false;
+    this.activeTouchId = null;
     this.clearAim();
     this.state = GameState.PAUSED;
     PhysicsSystem2D.instance.enable = false;
@@ -1084,6 +1096,8 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private setWordPanelVisible(visible: boolean): void {
+    if (this.wordTrayNode) this.wordTrayNode.active = visible;
+    if (this.wordHintNode) this.wordHintNode.active = visible;
     if (this.wordTitleLabel) this.wordTitleLabel.node.active = visible;
     if (this.wordPreviewLabel) this.wordPreviewLabel.node.active = visible;
     if (this.confirmNode) this.confirmNode.active = visible;
@@ -1117,6 +1131,20 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private handleWordInput(point: Vec2): void {
+    if (this.wordHintNode && this.withinBox(
+      point,
+      this.screenWidth * WORD_UI_CONFIG.hintButtonXRatio,
+      -this.screenHeight * WORD_UI_CONFIG.hintButtonYRatio,
+      WORD_UI_CONFIG.hintButtonWidth, WORD_UI_CONFIG.hintButtonHeight,
+    )) {
+      const suggested = this.wordPuzzle.suggestWord();
+      this.updateWordPanel();
+      if (this.wordPreviewLabel && suggested) {
+        this.wordPreviewLabel.string = '提示：' +
+          suggested.word + '  →  ' + suggested.ammoName;
+      }
+      return;
+    }
     const bookX = this.screenWidth * WORD_UI_CONFIG.wordBookButtonXRatio;
     const bookY = -this.screenHeight * WORD_UI_CONFIG.confirmYRatio;
     if (this.wordBookButtonNode && Math.abs(point.x - bookX) <= 56 && Math.abs(point.y - bookY) <= 28) {
@@ -1363,6 +1391,7 @@ export class PuckBattleBootstrap extends Component {
     if (distance > this.puckRadius * AIM_CONFIG.touchRadiusMultiplier) return;
 
     this.isDragging = true;
+    this.activeTouchId = event.getID();
     this.state = GameState.AIMING;
     this.dragStart = new Vec2(puckPosition.x, puckPosition.y);
     this.dragTouchStart = point;
@@ -1371,7 +1400,8 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private onTouchMove(event: EventTouch): void {
-    if (!this.isDragging || this.state !== GameState.AIMING) return;
+    if (!this.isDragging || this.state !== GameState.AIMING ||
+        event.getID() !== this.activeTouchId) return;
     const next = this.getCanvasPoint(event);
     if (distanceBetween(next.x, next.y, this.dragCurrent.x, this.dragCurrent.y) <
         AIM_CONFIG.moveRedrawThreshold) return;
@@ -1380,10 +1410,12 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private onTouchEnd(event: EventTouch): void {
-    if (!this.isDragging || this.state !== GameState.AIMING) return;
+    if (!this.isDragging || this.state !== GameState.AIMING ||
+        event.getID() !== this.activeTouchId) return;
 
     this.dragCurrent = this.getCanvasPoint(event);
     this.isDragging = false;
+    this.activeTouchId = null;
     this.clearAim();
 
     const puck = this.currentPuck;
@@ -1417,9 +1449,10 @@ export class PuckBattleBootstrap extends Component {
     this.updateHud();
   }
 
-  private onTouchCancel(): void {
-    if (!this.isDragging) return;
+  private onTouchCancel(event: EventTouch): void {
+    if (!this.isDragging || event.getID() !== this.activeTouchId) return;
     this.isDragging = false;
+    this.activeTouchId = null;
     this.clearAim();
     if (this.state === GameState.AIMING) {
       this.state = GameState.READY;
@@ -1436,60 +1469,75 @@ export class PuckBattleBootstrap extends Component {
 
   private drawAim(): void {
     if (!this.aimGraphics || !this.currentPuck) return;
-
     const graphics = this.aimGraphics;
     graphics.clear();
     graphics.node.setSiblingIndex(this.node.children.length - 1);
-
     const aim = calculateAim(
       this.dragTouchStart.x, this.dragTouchStart.y,
       this.dragCurrent.x, this.dragCurrent.y,
       this.currentAmmo?.launchSpeedMultiplier ?? 1,
     );
+    const powerRatio = aim.ready
+      ? AIM_CONFIG.minimumSpeedRatio + aim.strength * (1 - AIM_CONFIG.minimumSpeedRatio)
+      : 0;
     if (this.aimPowerLabel) {
       this.aimPowerLabel.node.active = true;
       this.aimPowerLabel.string = aim.ready
-        ? '发射力度 ' + Math.round(aim.strength * 100) + '%'
-        : '继续向后拖动来瞄准';
+        ? '力度 ' + Math.round(powerRatio * 100) + '% · 松开发射'
+        : '向后拖动瞄准 · 松手取消';
     }
-    if (aim.distance < 1) return;
+    if (!aim.ready) return;
 
-    const length = 65 + aim.strength * 130;
-    const endX = this.dragStart.x + aim.directionX * length;
-    const endY = this.dragStart.y + aim.directionY * length;
-
+    // Wall-only preview: bumpers, other pucks and ammo effects can alter the real shot.
+    const inset = this.puckRadius + PUCK_CONFIG.wallThickness / 2;
+    const path = predictWallBouncePath(
+      this.dragStart.x, this.dragStart.y, aim.directionX, aim.directionY,
+      110 + aim.strength * 385,
+      {
+        left: -this.arenaWidth / 2 + inset,
+        right: this.arenaWidth / 2 - inset,
+        bottom: this.arenaCenterY - this.arenaHeight / 2 + inset,
+        top: this.arenaCenterY + this.arenaHeight / 2 - inset,
+      }, 2,
+    );
+    const guideColor = powerRatio >= 0.8 ? new Color(227, 99, 83, 255)
+      : powerRatio >= 0.5 ? new Color(220, 147, 68, 255)
+      : new Color(42, 130, 195, 255);
+    for (let i = 1; i < path.length; i++) {
+      const from = path[i - 1], to = path[i];
+      const dist = distanceBetween(from.x, from.y, to.x, to.y);
+      graphics.fillColor = guideColor;
+      const count = Math.max(1, Math.ceil(dist / 28));
+      for (let dot = 1; dot <= count; dot++) {
+        const t = dot / count;
+        graphics.circle(from.x + (to.x - from.x) * t,
+          from.y + (to.y - from.y) * t, i === 1 ? 4 : 3);
+      }
+      graphics.fill();
+    }
+    const arrowLength = 44 + aim.strength * 31;
+    const endX = this.dragStart.x + aim.directionX * arrowLength;
+    const endY = this.dragStart.y + aim.directionY * arrowLength;
     graphics.lineWidth = 5;
-    graphics.strokeColor = new Color(255, 255, 255, 245);
+    graphics.strokeColor = guideColor;
     graphics.moveTo(this.dragStart.x, this.dragStart.y);
     graphics.lineTo(endX, endY);
     graphics.stroke();
-
     const angle = Math.atan2(aim.directionY, aim.directionX);
-    const headLength = 17;
-    graphics.fillColor = new Color(255, 255, 255, 245);
+    graphics.fillColor = guideColor;
     graphics.moveTo(endX, endY);
-    graphics.lineTo(
-      endX - Math.cos(angle - 0.45) * headLength,
-      endY - Math.sin(angle - 0.45) * headLength,
-    );
-    graphics.lineTo(
-      endX - Math.cos(angle + 0.45) * headLength,
-      endY - Math.sin(angle + 0.45) * headLength,
-    );
+    graphics.lineTo(endX - Math.cos(angle - 0.42) * 15,
+      endY - Math.sin(angle - 0.42) * 15);
+    graphics.lineTo(endX - Math.cos(angle + 0.42) * 15,
+      endY - Math.sin(angle + 0.42) * 15);
     graphics.close();
     graphics.fill();
-
-    const barWidth = 170;
-    const barHeight = 10;
-    const barX = -barWidth / 2;
-    const barY = this.launchY - 94;
-
-    graphics.fillColor = new Color(190, 215, 235, 220);
-    graphics.rect(barX, barY, barWidth, barHeight);
+    const barWidth = 170, barX = -barWidth / 2, barY = this.launchY - 94;
+    graphics.fillColor = new Color(194, 216, 230, 245);
+    graphics.roundRect(barX, barY, barWidth, 12, 6);
     graphics.fill();
-
-    graphics.fillColor = new Color(74, 169, 225, 255);
-    graphics.rect(barX, barY, barWidth * aim.strength, barHeight);
+    graphics.fillColor = guideColor;
+    graphics.roundRect(barX, barY, barWidth * powerRatio, 12, 6);
     graphics.fill();
   }
 
@@ -1620,6 +1668,7 @@ export class PuckBattleBootstrap extends Component {
     this.settleElapsed = 0;
     this.shotElapsed = 0;
     this.isDragging = false;
+    this.activeTouchId = null;
     this.wordPuzzle.reset();
     this.state = GameState.WORD_SELECT;
 

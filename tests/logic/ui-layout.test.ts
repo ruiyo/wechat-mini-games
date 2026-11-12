@@ -22,3 +22,13 @@ test('wordbook button remains inside the portrait canvas', () => {
   assert.ok(center - WORD_UI_CONFIG.wordBookButtonWidth / 2 > 0);
   assert.ok(center + WORD_UI_CONFIG.wordBookButtonWidth / 2 < screenWidth);
 });
+
+test('hint button remains separate from the six character card touch targets', () => {
+  const width = 720, height = 1280;
+  const x = width * WORD_UI_CONFIG.hintButtonXRatio;
+  const y = -height * WORD_UI_CONFIG.hintButtonYRatio;
+  const tileY = -height * WORD_UI_CONFIG.tileYRatio;
+  assert.ok(x - WORD_UI_CONFIG.hintButtonWidth / 2 > -width / 2);
+  assert.ok(y - WORD_UI_CONFIG.hintButtonHeight / 2 >
+    tileY + WORD_UI_CONFIG.tileHeight / 2);
+});
