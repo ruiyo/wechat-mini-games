@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 const code = readFileSync('games/puck-battle/assets/scripts/PuckBattleBootstrap.ts', 'utf8');
 test('word UI hides completely during aiming and hint is a separate action', () => {
   assert.match(code, /this\.wordTrayNode\.active = visible/);
-  assert.match(code, /this\.wordHintNode\.active = visible/);
+  assert.match(code, /this\.wordHintNode\.active = wordVisible/);
   assert.match(code, /this\.wordPuzzle\.suggestWord\(\)/);
 });
 test('second finger cannot move or end the first finger drag', () => {
