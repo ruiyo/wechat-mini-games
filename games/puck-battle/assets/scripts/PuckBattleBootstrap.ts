@@ -20,6 +20,8 @@ import {
 
 import { AIM_CONFIG, PUCK_CONFIG, WORD_UI_CONFIG } from './GameConfig';
 import { calculateAim, predictWallBouncePath } from './AimRules';
+import { PuckInteractionSystem } from './PuckInteractionSystem';
+import { pathIntersectsCircle } from './PuckInteractionRules';
 import { AmmoFactory } from './AmmoFactory';
 import type { AmmoDefinition } from './AmmoFactory';
 import { AmmoEffectController } from './AmmoEffectController';
@@ -49,6 +51,7 @@ interface PuckEntry {
   score: number;
   scoreMultiplier: number;
   index: number;
+  freezeRemaining: number;
 }
 
 @ccclass('PuckBattleBootstrap')
@@ -70,6 +73,7 @@ export class PuckBattleBootstrap extends Component {
   private currentPuck: PuckEntry | null = null;
   private currentAmmo: AmmoDefinition | null = null;
   private wordPuzzle = new WordPuzzleController();
+  private interactions = new PuckInteractionSystem();
 
   private shotsFired = 0;
   private totalScore = 0;
@@ -89,6 +93,9 @@ export class PuckBattleBootstrap extends Component {
   private aimPowerLabel: Label | null = null;
   private settleElapsed = 0;
   private shotElapsed = 0;
+  private effectGraphics: Graphics | null = null;
+  private contactNotice: Label | null = null;
+  private contactNoticeTimer = 0;
 
   private aimGraphics: Graphics | null = null;
   private scoreLabel: Label | null = null;
@@ -179,6 +186,7 @@ export class PuckBattleBootstrap extends Component {
     this.createArenaVisuals();
     this.createWalls();
     this.createBumpers();
+    this.createEffectLayer();
     this.createAimLayer();
     this.createHud();
     this.createWordPanel();
@@ -212,6 +220,7 @@ export class PuckBattleBootstrap extends Component {
   }
 
   onDestroy(): void {
+    this.interactions.reset();
     this.node.off(Node.EventType.TOUCH_START, this.onTouchStart, this);
     this.node.off(Node.EventType.TOUCH_MOVE, this.onTouchMove, this);
     this.node.off(Node.EventType.TOUCH_END, this.onTouchEnd, this);
@@ -220,25 +229,36 @@ export class PuckBattleBootstrap extends Component {
 
   update(deltaTime: number): void {
     if (!this.physicsReady) return;
-
-    if (
-      this.state !== GameState.FLYING &&
-      this.state !== GameState.SETTLING
-    ) {
+    const activeFlight = this.state === GameState.FLYING ||
+      this.state === GameState.SETTLING;
+    if (!activeFlight) {
+      this.updateInteractionVisuals(deltaTime);
       return;
     }
 
     for (const puck of this.pucks) {
       AmmoEffectController.updateFlight(
-        puck.body,
-        puck.node,
-        puck.ammo,
-        this.targetCenter,
-        this.scoreRadii.outer,
-        deltaTime,
+        puck.body, puck.node, puck.ammo,
+        this.targetCenter, this.scoreRadii.outer, deltaTime,
       );
     }
 
+    // Box2D contact callbacks only enqueue data. Process after the physics
+    // solver has finished so both colliding rigidbodies remain physical.
+    const contacts = this.interactions.update(deltaTime);
+    if (contacts.length > 0) {
+      this.updateHud();
+      const latest = contacts[contacts.length - 1];
+      if (this.contactNotice) {
+        this.contactNotice.string = latest.text;
+        this.contactNotice.color = new Color(
+          latest.color[0], latest.color[1], latest.color[2], 255);
+        this.contactNotice.node.active = true;
+        this.contactNotice.node.setSiblingIndex(this.node.children.length - 1);
+        this.contactNoticeTimer = 0.9;
+      }
+    }
+    this.updateInteractionVisuals(deltaTime);
     this.shotElapsed += deltaTime;
 
     if (this.shotElapsed >= PUCK_CONFIG.maxShotDuration) {
@@ -499,6 +519,9 @@ export class PuckBattleBootstrap extends Component {
 
     const collider = node.addComponent(BoxCollider2D);
     collider.size = new Size(width, height);
+    body.group = 1;
+    collider.group = 1;
+    collider.sensor = false;
     collider.friction = 0.22;
     collider.restitution = 0.28;
     collider.apply();
@@ -558,9 +581,40 @@ export class PuckBattleBootstrap extends Component {
 
     const collider = node.addComponent(CircleCollider2D);
     collider.radius = radius;
+    body.group = 1;
+    collider.group = 1;
+    collider.sensor = false;
     collider.friction = 0.12;
     collider.restitution = 0.78;
     collider.apply();
+  }
+
+  private createEffectLayer(): void {
+    const node = this.makeRenderNode('PuckCollisionEffects');
+    this.node.addChild(node);
+    node.addComponent(UITransform).setContentSize(this.screenWidth, this.screenHeight);
+    this.effectGraphics = node.addComponent(Graphics);
+    this.contactNotice = this.addLabel(
+      'PuckContactNotice', '', 0,
+      this.targetCenter.y - this.scoreRadii.outer - 48,
+      25, new Color(232, 105, 84, 255), this.screenWidth * 0.72, 46,
+    );
+    this.contactNotice.node.active = false;
+  }
+
+  private updateInteractionVisuals(deltaTime: number): void {
+    if (this.contactNoticeTimer > 0) {
+      this.contactNoticeTimer = Math.max(0, this.contactNoticeTimer - deltaTime);
+      if (this.contactNoticeTimer === 0 && this.contactNotice) {
+        this.contactNotice.node.active = false;
+      }
+    }
+    this.interactions.draw(
+      this.effectGraphics, deltaTime,
+      this.state !== GameState.MENU && this.state !== GameState.RESULT,
+      this.targetCenter.x, this.targetCenter.y, this.scoreRadii.outer,
+      this.puckRadius,
+    );
   }
 
   private createAimLayer(): void {
@@ -589,8 +643,8 @@ export class PuckBattleBootstrap extends Component {
       27, new Color(46, 93, 132, 255), this.screenWidth * 0.45, 42,
     );
     this.shotsLabel = this.addLabel(
-      'ShotsLabel', '发射 0', this.screenWidth * 0.23, this.screenHeight * 0.342,
-      21, new Color(62, 113, 151, 255), this.screenWidth * 0.37, 42,
+      'ShotsLabel', '发射 0 · 撞击 0', this.screenWidth * 0.23, this.screenHeight * 0.342,
+      18, new Color(62, 113, 151, 255), this.screenWidth * 0.40, 42,
     );
     this.bestLabel = this.addLabel(
       'BestLabel', '最高 0', -this.screenWidth * 0.265, this.screenHeight * 0.304,
@@ -1210,6 +1264,7 @@ export class PuckBattleBootstrap extends Component {
       const oldest = this.pucks.shift();
       if (oldest) {
         this.bankedScore += oldest.score;
+        this.interactions.unregister(oldest);
         oldest.node.destroy();
       }
     }
@@ -1306,8 +1361,10 @@ export class PuckBattleBootstrap extends Component {
       index,
       score: 0,
       scoreMultiplier: 1,
+      freezeRemaining: 0,
     };
 
+    this.interactions.register(entry);
     this.pucks.push(entry);
     this.currentPuck = entry;
     this.currentAmmo = ammo;
@@ -1438,6 +1495,7 @@ export class PuckBattleBootstrap extends Component {
     this.scoreBeforeShot = this.totalScore;
     puck.body.linearVelocity = velocity;
     puck.body.wakeUp();
+    this.interactions.beginShot(puck);
 
     this.state = GameState.FLYING;
     this.settleElapsed = 0;
@@ -1515,6 +1573,23 @@ export class PuckBattleBootstrap extends Component {
       }
       graphics.fill();
     }
+    // Red markers flag approximate intersections with existing pucks.
+    // Actual contacts are confirmed by the Box2D BEGIN_CONTACT callback.
+    let candidateContact = false;
+    for (const oldPuck of this.pucks) {
+      if (oldPuck === this.currentPuck) continue;
+      if (!pathIntersectsCircle(path, oldPuck.node.position.x,
+        oldPuck.node.position.y, this.puckRadius * 2 + 4)) continue;
+      candidateContact = true;
+      graphics.lineWidth = 4;
+      graphics.strokeColor = new Color(249, 116, 92, 245);
+      graphics.circle(oldPuck.node.position.x, oldPuck.node.position.y,
+        this.puckRadius + 12);
+      graphics.stroke();
+    }
+    if (candidateContact && this.aimPowerLabel) {
+      this.aimPowerLabel.string = '瞄准旧弹药 · 松开发射';
+    }
     const arrowLength = 44 + aim.strength * 31;
     const endX = this.dragStart.x + aim.directionX * arrowLength;
     const endY = this.dragStart.y + aim.directionY * arrowLength;
@@ -1557,6 +1632,7 @@ export class PuckBattleBootstrap extends Component {
   private finishCurrentShot(): void {
     this.settleElapsed = 0;
     this.shotElapsed = 0;
+    this.interactions.endShot();
 
     const currentPuck = this.currentPuck;
     if (!currentPuck) return;
@@ -1637,6 +1713,7 @@ export class PuckBattleBootstrap extends Component {
         '得分  ' + this.totalScore +
         (newBest ? '\n恭喜打破最高纪录！' : '') +
         '\n发射次数  ' + this.shotsFired +
+        '\n弹药相撞  ' + this.interactions.collisionCount + ' 次' +
         '\n本局收录词语  ' + this.discoveredWordCount +
         '\n历史最高  ' + this.bestScore;
     }
@@ -1650,6 +1727,10 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private restartRun(): void {
+    this.interactions.reset();
+    this.effectGraphics?.clear();
+    this.contactNoticeTimer = 0;
+    if (this.contactNotice) this.contactNotice.node.active = false;
     for (const puck of this.pucks) {
       puck.node.destroy();
     }
@@ -1684,7 +1765,9 @@ export class PuckBattleBootstrap extends Component {
       this.scoreLabel.string = '总分 ' + this.totalScore;
     }
     if (this.shotsLabel) {
-      this.shotsLabel.string = '发射 ' + this.shotsFired;
+      this.shotsLabel.string =
+        '发射 ' + this.shotsFired + ' · 撞击 ' +
+        this.interactions.collisionCount;
     }
     if (this.bestLabel) {
       this.bestLabel.string = '最高纪录 ' + this.bestScore;
