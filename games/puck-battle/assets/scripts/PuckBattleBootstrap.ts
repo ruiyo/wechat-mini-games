@@ -29,8 +29,12 @@ import { distanceBetween, scoreByDistance } from './ScoreRules';
 import { SaveManager } from './SaveManager';
 import { WordPuzzleController } from './WordPuzzleController';
 import { WORD_DEFINITIONS } from './WordDictionary';
+import type { AmmoType } from './WordDictionary';
 
 const { ccclass } = _decorator;
+
+const PRACTICE_AMMO_TYPES: AmmoType[] = ['bounce', 'magnet', 'ice', 'impact'];
+const PRACTICE_AMMO_LABELS = ['弹跳', '磁吸', '冰冻', '冲击'];
 
 enum GameState {
   MENU,
@@ -74,6 +78,8 @@ export class PuckBattleBootstrap extends Component {
   private currentAmmo: AmmoDefinition | null = null;
   private wordPuzzle = new WordPuzzleController();
   private interactions = new PuckInteractionSystem();
+  private practiceMode = false;
+  private nextPuckIndex = 0;
 
   private shotsFired = 0;
   private totalScore = 0;
@@ -98,6 +104,7 @@ export class PuckBattleBootstrap extends Component {
   private contactNoticeTimer = 0;
 
   private aimGraphics: Graphics | null = null;
+  private gameTitleLabel: Label | null = null;
   private scoreLabel: Label | null = null;
   private shotsLabel: Label | null = null;
   private bestLabel: Label | null = null;
@@ -128,6 +135,8 @@ export class PuckBattleBootstrap extends Component {
   private tileGraphics: Graphics[] = [];
   private tileLabels: Label[] = [];
   private tileCenters: Vec2[] = [];
+  private practiceAmmoNodes: Node[] = [];
+  private practiceAmmoCenters: Vec2[] = [];
 
   private physicsReady = false;
 
@@ -634,7 +643,7 @@ export class PuckBattleBootstrap extends Component {
     this.createPanel(this.node, 'HudCard', 0, this.screenHeight * 0.344,
       this.screenWidth * 0.92, 164, 22, new Color(255, 255, 255, 247));
 
-    this.addLabel(
+    this.gameTitleLabel = this.addLabel(
       'GameTitleLabel', '词弹碰碰局', 0, this.screenHeight * 0.380,
       30, new Color(44, 91, 129, 255), this.screenWidth * 0.63, 45,
     );
@@ -790,6 +799,18 @@ export class PuckBattleBootstrap extends Component {
       Color.WHITE,
     );
 
+    // The practice ammo selector shares the same tray but never consumes words.
+    for (let i = 0; i < PRACTICE_AMMO_TYPES.length; i += 1) {
+      const x = this.screenWidth * (-0.3 + i * 0.2);
+      const y = -this.screenHeight * WORD_UI_CONFIG.tileYRatio;
+      const node = this.createActionButton(
+        this.node, 'PracticeAmmo_' + PRACTICE_AMMO_TYPES[i],
+        PRACTICE_AMMO_LABELS[i], x, y, 118, 64, i === 3,
+      );
+      node.active = false;
+      this.practiceAmmoNodes.push(node);
+      this.practiceAmmoCenters.push(new Vec2(x, y));
+    }
     this.updateWordPanel();
   }
 
@@ -985,7 +1006,7 @@ export class PuckBattleBootstrap extends Component {
   private createMenuOverlay(): void {
     const overlay = this.createFullScreenOverlay('MainMenuOverlay', true);
     const width = Math.min(this.screenWidth * 0.87, 630);
-    this.createPanel(overlay, 'MainMenuCard', 0, 0, width, 880, 34,
+    this.createPanel(overlay, 'MainMenuCard', 0, 0, width, 970, 34,
       new Color(255, 255, 255, 252));
     const title = this.addChildLabel(overlay, '词弹碰碰局', width - 40,
       78, 47, new Color(47, 104, 146, 255));
@@ -1019,13 +1040,15 @@ export class PuckBattleBootstrap extends Component {
 
     this.createActionButton(overlay, 'MenuStartButton', '开始游戏',
       0, -124, 322, 70, true);
+    this.createActionButton(overlay, 'MenuPracticeButton', '碰撞练习',
+      0, -207, 322, 64);
     this.createActionButton(overlay, 'MenuHowToButton', '玩法说明',
-      0, -214, 322, 61);
+      0, -291, 322, 61);
     this.createActionButton(overlay, 'MenuBookButton', '词语图鉴',
-      0, -292, 322, 61);
+      0, -365, 322, 61);
     this.menuBestLabel = this.addChildLabel(
       overlay, '历史最高 0', width - 40, 34, 20, new Color(104, 144, 172, 255));
-    this.menuBestLabel.node.setPosition(0, -385, 0);
+    this.menuBestLabel.node.setPosition(0, -438, 0);
     this.menuOverlay = overlay;
   }
 
@@ -1043,6 +1066,7 @@ export class PuckBattleBootstrap extends Component {
       '④ 按住圆盘向后拖动，看清轨迹和力度',
       '⑤ 松开发射，越靠近靶心得分越高',
       '⑥ 连击加分，失误累计五次结束',
+      '⑦ 主页「碰撞练习」可直接选择四种弹药',
     ].join('\n');
     const text = this.addChildLabel(overlay, steps, width - 70, 325,
       21, new Color(76, 113, 145, 255));
@@ -1145,18 +1169,26 @@ export class PuckBattleBootstrap extends Component {
 
   private returnToHome(): void {
     PhysicsSystem2D.instance.enable = true;
+    this.practiceMode = false;
     this.restartRun();
     this.showHome();
   }
 
   private setWordPanelVisible(visible: boolean): void {
+    const wordVisible = visible && !this.practiceMode;
+    const practiceVisible = visible && this.practiceMode;
     if (this.wordTrayNode) this.wordTrayNode.active = visible;
-    if (this.wordHintNode) this.wordHintNode.active = visible;
-    if (this.wordTitleLabel) this.wordTitleLabel.node.active = visible;
+    if (this.wordHintNode) this.wordHintNode.active = wordVisible;
+    if (this.wordTitleLabel) {
+      this.wordTitleLabel.node.active = visible;
+      if (visible) this.wordTitleLabel.string = this.practiceMode
+        ? '碰撞练习 · 选择弹药' : '组词装弹';
+    }
     if (this.wordPreviewLabel) this.wordPreviewLabel.node.active = visible;
-    if (this.confirmNode) this.confirmNode.active = visible;
-    if (this.wordBookButtonNode) this.wordBookButtonNode.active = visible;
-    for (const node of this.tileNodes) node.active = visible;
+    if (this.confirmNode) this.confirmNode.active = wordVisible;
+    if (this.wordBookButtonNode) this.wordBookButtonNode.active = wordVisible;
+    for (const node of this.tileNodes) node.active = wordVisible;
+    for (const node of this.practiceAmmoNodes) node.active = practiceVisible;
   }
 
   private showWordState(): void {
@@ -1166,9 +1198,17 @@ export class PuckBattleBootstrap extends Component {
     this.setWordPanelVisible(true);
     if (this.ammoLabel) this.ammoLabel.node.active = false;
     if (this.hintLabel) {
-      this.hintLabel.string = '选择两个汉字，组合下一发弹药';
+      this.hintLabel.string = this.practiceMode
+        ? '选一种弹药，对准场上的旧弹药发射'
+        : '选择两个汉字，组合下一发弹药';
     }
-    this.updateWordPanel();
+    if (this.practiceMode) {
+      if (this.wordPreviewLabel) {
+        this.wordPreviewLabel.string = '练习不计最高分 · 观察弹药碰撞和特殊效果';
+      }
+    } else {
+      this.updateWordPanel();
+    }
   }
 
   private showAmmoState(): void {
@@ -1185,6 +1225,10 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private handleWordInput(point: Vec2): void {
+    if (this.practiceMode) {
+      this.handlePracticeAmmoInput(point);
+      return;
+    }
     if (this.wordHintNode && this.withinBox(
       point,
       this.screenWidth * WORD_UI_CONFIG.hintButtonXRatio,
@@ -1230,6 +1274,38 @@ export class PuckBattleBootstrap extends Component {
     }
   }
 
+  private handlePracticeAmmoInput(point: Vec2): void {
+    if (!this.physicsReady) return;
+    for (let i = 0; i < this.practiceAmmoCenters.length; i += 1) {
+      const center = this.practiceAmmoCenters[i];
+      if (!this.withinBox(point, center.x, center.y, 125, 70)) continue;
+      const word = WORD_DEFINITIONS.find(
+        (entry) => entry.ammoType === PRACTICE_AMMO_TYPES[i],
+      );
+      if (!word) return;
+      this.spawnPuck(AmmoFactory.create(word));
+      this.state = GameState.READY;
+      this.showAmmoState();
+      this.updateHud();
+      return;
+    }
+  }
+
+  private spawnPracticeTargets(): void {
+    // Spawn bodies at their FINAL positions (do not teleport active Box2D bodies).
+    const types: AmmoType[] = ['bounce', 'ice'];
+    const y = this.targetCenter.y - this.scoreRadii.outer * 1.27;
+    for (let i = 0; i < types.length; i += 1) {
+      const word = WORD_DEFINITIONS.find((entry) => entry.ammoType === types[i]);
+      if (!word) continue;
+      const x = this.arenaWidth * (i === 0 ? -0.14 : 0.14);
+      this.spawnPuck(AmmoFactory.create(word), new Vec2(x, y));
+      this.currentPuck?.body.sleep();
+    }
+    this.currentPuck = null;
+    this.currentAmmo = null;
+  }
+
   private confirmWord(): void {
     if (!this.physicsReady) {
       if (this.warningLabel) {
@@ -1259,7 +1335,7 @@ export class PuckBattleBootstrap extends Component {
     this.updateHud();
   }
 
-  private spawnPuck(ammo: AmmoDefinition): void {
+  private spawnPuck(ammo: AmmoDefinition, presetPosition?: Vec2): void {
     if (this.pucks.length >= PUCK_CONFIG.maxActivePucks) {
       const oldest = this.pucks.shift();
       if (oldest) {
@@ -1308,10 +1384,15 @@ export class PuckBattleBootstrap extends Component {
       }
     }
 
-    const index = this.shotsFired;
+    // Training targets do not count as fired shots, so IDs must be unique
+    // independently from shotsFired for collision pair deduplication.
+    const index = this.nextPuckIndex++;
     const node = this.makeRenderNode('Ammo_' + index);
     this.node.addChild(node);
-    node.setPosition(selectedX, this.launchY, 0);
+    node.setPosition(
+      presetPosition ? presetPosition.x : selectedX,
+      presetPosition ? presetPosition.y : this.launchY, 0,
+    );
 
     const transform = node.addComponent(UITransform);
     transform.setContentSize(this.puckRadius * 2, this.puckRadius * 2);
@@ -1385,13 +1466,17 @@ export class PuckBattleBootstrap extends Component {
 
     if (this.menuOverlay?.active) {
       if (this.withinBox(point, 0, -124, 322, 76)) {
+        this.practiceMode = false;
         this.startRun();
-      } else if (this.withinBox(point, 0, -214, 322, 65)) {
+      } else if (this.withinBox(point, 0, -207, 322, 70)) {
+        this.practiceMode = true;
+        this.startRun();
+      } else if (this.withinBox(point, 0, -291, 322, 65)) {
         if (this.helpOverlay) {
           this.helpOverlay.active = true;
           this.helpOverlay.setSiblingIndex(this.node.children.length - 1);
         }
-      } else if (this.withinBox(point, 0, -292, 322, 65)) {
+      } else if (this.withinBox(point, 0, -365, 322, 65)) {
         this.openWordBook();
       }
       return;
@@ -1673,7 +1758,7 @@ export class PuckBattleBootstrap extends Component {
     this.currentAmmo = null;
     this.updateHud();
 
-    if (this.missCount >= PUCK_CONFIG.maxMisses) {
+    if (!this.practiceMode && this.missCount >= PUCK_CONFIG.maxMisses) {
       this.finishRun();
       return;
     }
@@ -1705,8 +1790,10 @@ export class PuckBattleBootstrap extends Component {
     this.setWordPanelVisible(false);
     if (this.ammoLabel) this.ammoLabel.node.active = false;
 
-    const newBest = this.totalScore > this.bestScore;
-    this.bestScore = SaveManager.saveBestScore(this.totalScore);
+    const newBest = !this.practiceMode && this.totalScore > this.bestScore;
+    if (!this.practiceMode) {
+      this.bestScore = SaveManager.saveBestScore(this.totalScore);
+    }
 
     if (this.resultLabel) {
       this.resultLabel.string =
@@ -1739,6 +1826,7 @@ export class PuckBattleBootstrap extends Component {
     this.currentPuck = null;
     this.currentAmmo = null;
     this.shotsFired = 0;
+    this.nextPuckIndex = 0;
     this.totalScore = 0;
     this.scoreBeforeShot = 0;
     this.bankedScore = 0;
@@ -1756,13 +1844,18 @@ export class PuckBattleBootstrap extends Component {
     if (this.resultOverlay) this.resultOverlay.active = false;
     if (this.resultLabel) this.resultLabel.node.active = true;
     this.clearAim();
+    if (this.practiceMode && this.physicsReady) this.spawnPracticeTargets();
     this.showWordState();
     this.updateHud();
   }
 
   private updateHud(): void {
+    if (this.gameTitleLabel) {
+      this.gameTitleLabel.string = this.practiceMode ? '碰撞练习' : '词弹碰碰局';
+    }
     if (this.scoreLabel) {
-      this.scoreLabel.string = '总分 ' + this.totalScore;
+      this.scoreLabel.string =
+        (this.practiceMode ? '练习分 ' : '总分 ') + this.totalScore;
     }
     if (this.shotsLabel) {
       this.shotsLabel.string =
@@ -1770,7 +1863,8 @@ export class PuckBattleBootstrap extends Component {
         this.interactions.collisionCount;
     }
     if (this.bestLabel) {
-      this.bestLabel.string = '最高纪录 ' + this.bestScore;
+      this.bestLabel.string = this.practiceMode
+        ? '练习不计入纪录' : '最高纪录 ' + this.bestScore;
     }
     if (this.comboLabel) {
       const multiplier = Math.min(
@@ -1782,7 +1876,8 @@ export class PuckBattleBootstrap extends Component {
         : '连击待触发';
     }
     if (this.missLabel) {
-      this.missLabel.string = '失误 ' + this.missCount + '/' + PUCK_CONFIG.maxMisses;
+      this.missLabel.string = this.practiceMode
+        ? '自由试射' : '失误 ' + this.missCount + '/' + PUCK_CONFIG.maxMisses;
     }
   }
 
