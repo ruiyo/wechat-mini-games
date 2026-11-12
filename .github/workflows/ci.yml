@@ -40,7 +40,7 @@ jobs:
       - name: Validate Cocos project structure
         run: node scripts/validate-project.mjs
       - name: Run logic unit tests
-        run: npx --yes tsx@4.20.6 --test tests/logic/*.test.ts
+        run: npx --yes tsx@4.20.6 --tsconfig tsconfig.logic.json --test tests/logic/*.test.ts
 
   cocos-wechat-build:
     name: Cocos Creator 3.8.8 WeChat build
