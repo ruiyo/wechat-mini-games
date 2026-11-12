@@ -49,12 +49,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64, cocos-creator]
     timeout-minutes: 30
     steps:
-      - name: Checkout repository
-        id: checkout
-        uses: actions/checkout@v4
-        continue-on-error: true
-      - name: Restore source from GitHub archive when checkout fails
-        if: steps.checkout.outcome == 'failure'
+      - name: Restore source from GitHub archive
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
@@ -94,7 +89,7 @@ jobs:
             Copy-Item -Destination $env:GITHUB_WORKSPACE -Recurse -Force
           $projectFile = Join-Path $env:GITHUB_WORKSPACE 'games\puck-battle\package.json'
           if (-not (Test-Path -LiteralPath $projectFile -PathType Leaf)) {
-            throw 'Fallback source checkout is incomplete.'
+            throw 'GitHub API archive checkout is incomplete.'
           }
           Write-Host "GitHub archive restored for commit $env:GITHUB_SHA"
       - name: Build WeChat Mini Game with Cocos Creator
@@ -107,31 +102,34 @@ jobs:
           $projectPath = Join-Path $env:GITHUB_WORKSPACE 'games\puck-battle'
           $buildScript = Join-Path $env:GITHUB_WORKSPACE 'scripts\windows\build-wechat.ps1'
           & $buildScript -CreatorPath $env:COCOS_CREATOR_PATH -ProjectPath $projectPath
-      - name: Upload build and diagnostics
-        id: primary-upload
+      - name: Upload ready-to-play WeChat package
+        id: game-upload
+        if: success()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: word-puck-ready-to-play
+          path: games/puck-battle/build/ci-wechatgame/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retry game package upload if needed
+        if: success() && steps.game-upload.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: word-puck-ready-to-play-retry
+          path: games/puck-battle/build/ci-wechatgame/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload build diagnostics separately
         if: always()
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: word-puck-wechat-build
+          name: word-puck-build-logs
           path: |
-            games/puck-battle/build/ci-wechatgame/**
             ${{ runner.temp }}\cocos-build.log
             ${{ runner.temp }}\cocos-build.stdout.log
             ${{ runner.temp }}\cocos-build.stderr.log
             ${{ runner.temp }}\cocos-creator-cli.log
-          if-no-files-found: warn
-          retention-days: 14
-      - name: Retry upload if ArtifactService times out
-        if: always() && steps.primary-upload.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: word-puck-wechat-build-retry
-          path: |
-            games/puck-battle/build/ci-wechatgame/**
-            ${{ runner.temp }}\cocos-build.log
-            ${{ runner.temp }}\cocos-build.stdout.log
-            ${{ runner.temp }}\cocos-build.stderr.log
-            ${{ runner.temp }}\cocos-creator-cli.log
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 14

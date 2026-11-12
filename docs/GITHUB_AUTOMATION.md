@@ -6,8 +6,8 @@
 
 1. Push 到 feature/puck-battle-prototype 后，Ubuntu runner 自动执行项目结构、场景引用、项目设置和逻辑单元测试。
 2. 测试通过后，可信 push 自动分配给带有 cocos-creator 标签的 Windows runner。
-3. Windows runner 使用 COCOS_CREATOR_PATH 调用 Cocos Creator CLI，构建 wechatgame。
-4. 构建目录和完整诊断日志上传为 Actions artifact。
+3. Windows runner 直接从 GitHub API 获取源码压缩包（避免访问 github.com 超时导致 Git checkout 反复重试），再使用 COCOS_CREATOR_PATH 调用 Cocos Creator CLI 构建 wechatgame。
+4. 游戏包与诊断日志分别上传为 Actions artifact，方便独立下载和导入。
 5. Pull Request（包括来自 fork 的 PR）只运行 Ubuntu 逻辑测试，不会在个人电脑上执行不可信代码。
 
 ## Windows Runner
@@ -72,7 +72,9 @@ Cocos Creator 官方命令行构建退出码：
 
 构建目录：games/puck-battle/build/ci-wechatgame
 
-Actions artifact：word-puck-wechat-build，保留 14 天。失败时也会尝试上传诊断日志。
+Actions artifact：**word-puck-ready-to-play**，仅包含游戏目录文件，保留 14 天。解压后直接选择包含 `project.config.json` 和 `game.json` 的目录导入微信开发者工具。
+
+诊断日志 artifact：**word-puck-build-logs**，与游戏包分开上传。如果主上传遇到网络超时，会尝试生成 `word-puck-ready-to-play-retry`。
 
 ## 安全边界
 

@@ -51,7 +51,7 @@ GitHub Actions 会在可信分支 Push 后自动执行：
 1. 项目结构和逻辑单元测试。
 2. Windows Runner 调用 Cocos Creator 3.8.8。
 3. 构建微信小游戏并验证竖屏配置、入口脚本和场景 UUID。
-4. 上传 word-puck-wechat-build 构建产物。
+4. 分开上传 `word-puck-ready-to-play`（可直接导入）和 `word-puck-build-logs`（诊断日志）。
 
 当前生成包使用 Cocos 默认测试 AppID。正式发布前必须替换为对应小程序的正式 AppID，并在微信开发者工具中完成预览和真机验收。
 
