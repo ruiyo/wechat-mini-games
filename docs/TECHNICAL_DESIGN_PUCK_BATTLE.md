@@ -1,6 +1,6 @@
 # 《词弹碰碰局》技术设计
 
-- 版本：0.3
+- 版本：0.4
 - 引擎：Cocos Creator 3.8.x
 - 语言：TypeScript
 - 物理：Cocos Creator 2D Physics / Box2D
@@ -24,6 +24,8 @@
 
 ```typescript
 enum GameState {
+  MENU,
+  PAUSED,
   WORD_SELECT,
   READY,
   AIMING,
@@ -33,6 +35,8 @@ enum GameState {
 }
 ```
 
+- MENU：显示主菜单，玩家主动开始游戏后进入 WORD_SELECT。
+- PAUSED：冻结 Box2D 物理推进，保留恢复时的状态。
 - WORD_SELECT：选择两个汉字。
 - READY：弹药生成，等待拖动。
 - AIMING：拖动瞄准。
@@ -140,3 +144,22 @@ enum GameState {
 - 失误达到 5 时正确结束。
 - 重新开始后状态和场上对象完全重置。
 - 微信小游戏触摸和本地存储正常。
+
+## 12. V0.4 瞄准规则
+
+纯函数 `AimRules.calculateAim` 接收按下与当前触点坐标、弹药速度倍率，输出发射方向、有效拖拽距离、力度比例和线速度。
+
+设拖拽距离为 \(d\)，死区为 \(d_{min}=20\)，上限为 \(d_{max}=205\)，指数 \(\gamma=1.35\)：
+
+\[
+u=\operatorname{clip}\left(\frac{d-d_{min}}{d_{max}-d_{min}},0,1\right), \quad
+p=u^{\gamma}.
+\]
+
+若 \(d<d_{min}\)，则不发射；否则速度为 \(v=720\left(0.23+0.77p\right) m_a\)，其中 \(m_a\) 为弹药速度倍率。方向为从当前触点指向按下触点的单位向量。
+
+## 13. V0.4 界面与状态保障
+
+所有 UI 节点继续通过 `makeRenderNode` 设置 Canvas 渲染层，避免再次黑屏。主菜单、玩法说明、暂停、结算是同一 Cocos 场景的独立全屏弹层。触摸事件优先处理弹层，避免操作穿透。暂停通过禁用 `PhysicsSystem2D.instance.enable` 冻结物理推进，恢复时重新启用。
+
+所有操作参数集中在 `GameConfig` 的 `PUCK_CONFIG` 和 `AIM_CONFIG` 中；测试覆盖力度边界、倍率、UI 相机层、页面流程与输入行为。
