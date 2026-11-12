@@ -35,3 +35,22 @@ test('ammo definitions are independent objects', () => {
   assert.equal(first.type, second.type);
   assert.deepEqual(first.color, second.color);
 });
+
+test('four ammo types have distinct, purposeful handling profiles', () => {
+  const byType = new Map(
+    WORD_DEFINITIONS.map((word) => [word.ammoType, AmmoFactory.create(word)]),
+  );
+  const bounce = byType.get('bounce')!;
+  const magnet = byType.get('magnet')!;
+  const ice = byType.get('ice')!;
+  const impact = byType.get('impact')!;
+
+  assert.ok(bounce.restitution > magnet.restitution);
+  assert.ok(bounce.restitution > ice.restitution);
+  assert.ok(ice.friction > bounce.friction);
+  assert.ok(magnet.magnetSteer > 0);
+  assert.equal(bounce.magnetSteer, 0);
+  assert.ok(ice.targetDamping > ice.linearDamping);
+  assert.ok(impact.launchSpeedMultiplier > bounce.launchSpeedMultiplier);
+  assert.ok(impact.density > bounce.density);
+});
