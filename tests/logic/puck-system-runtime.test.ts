@@ -215,3 +215,24 @@ test('ice landing burst works even if shot finished before direct collisions', (
   assert.equal(old.body.type, ERigidBody2DType.Dynamic);
   system.reset();
 });
+
+test('a single newer-collider callback counts even if older collider sends none', () => {
+  const system = new PuckInteractionSystem();
+  const old = puck(0, 'bounce', 60, 0);
+  const shot = puck(5, 'impact', 0, 0, 340);
+  system.register(old);
+  system.register(shot);
+  system.beginShot(shot);
+  // Previously this was silently discarded because self.index > other.index.
+  shot.collider.emitContact(Contact2DType.BEGIN_CONTACT, old.collider);
+  const notices = system.update(1 / 60);
+  assert.equal(notices.length, 1);
+  assert.equal(system.collisionCount, 1);
+  assert.match(notices[0].text, /重击/);
+  assert.ok(old.body.linearVelocity.x > 0);
+  // The reverse callback in the same physics step must NOT count it twice.
+  old.collider.emitContact(Contact2DType.BEGIN_CONTACT, shot.collider);
+  assert.equal(system.update(1 / 60).length, 0);
+  assert.equal(system.collisionCount, 1);
+  system.reset();
+});
