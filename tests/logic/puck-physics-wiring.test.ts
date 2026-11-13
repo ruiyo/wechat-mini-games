@@ -48,7 +48,7 @@ test('restart and other game flows release the collision system', () => {
   assert.match(game, /this\.interactions\.beginShot\(puck\)/);
   assert.match(game, /this\.interactions\.endShot\(\)/);
   assert.match(game, /this\.interactions\.unregister\(oldest\)/);
-  assert.match(game, /private restartRun\(\): void \{\s*this\.interactions\.reset\(\)/);
+  assert.match(game, /private restartRun\(\): void \{\s*this\.glyphArena\?\.clear\(\);\s*this\.interactions\.reset\(\)/);
   assert.match(game, /pathIntersectsCircle\(/);
 });
 

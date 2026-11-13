@@ -8,8 +8,8 @@ const bootstrap = readFileSync('games/puck-battle/assets/scripts/PuckBattleBoots
 test('practice mode is a dedicated menu option with matching hit testing', () => {
   assert.match(bootstrap, /MenuPracticeButton', '碰撞练习'/);
   assert.match(bootstrap, /this\.withinBox\(point, 0, -207, 322, 70\)/);
-  assert.match(bootstrap, /this\.practiceMode = true;\s*this\.startRun\(\)/);
-  assert.match(bootstrap, /this\.practiceMode = false;\s*this\.startRun\(\)/);
+  assert.match(bootstrap, /this\.practiceMode = true;\s*this\.adventureMode = false;\s*this\.dailyMode = false;\s*this\.startRun\(\)/);
+  assert.match(bootstrap, /this\.practiceMode = false;\s*this\.adventureMode = true;\s*this\.dailyMode = false;\s*this\.startRun\(\)/);
 });
 
 test('four accessible ammo controls fit the practice word tray on portrait phones', () => {
@@ -39,7 +39,7 @@ test('practice starts with at most two physical target pucks and unique ids', ()
 test('practice allows repeated shots without polluting normal player records', () => {
   assert.match(bootstrap, /if \(!this\.practiceMode && this\.missCount >= PUCK_CONFIG\.maxMisses\)/);
   assert.match(bootstrap, /if \(!this\.practiceMode\) \{\s*this\.bestScore = SaveManager\.saveBestScore/);
-  assert.match(bootstrap, /this\.practiceMode = false;\s*this\.restartRun\(\)/);
+  assert.match(bootstrap, /this\.practiceMode = false;\s*this\.adventureMode = false;\s*this\.dailyMode = false;\s*this\.restartRun\(\)/);
   assert.match(bootstrap, /if \(this\.practiceMode && this\.physicsReady\) this\.spawnPracticeTargets\(\)/);
   assert.match(bootstrap, /this\.bestLabel\.string = this\.practiceMode/);
 });
