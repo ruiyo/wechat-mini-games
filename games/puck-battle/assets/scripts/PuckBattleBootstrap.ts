@@ -124,6 +124,8 @@ export class PuckBattleBootstrap extends Component {
   private shotElapsed = 0;
   private effectGraphics: Graphics | null = null;
   private contactNotice: Label | null = null;
+  private contactPlate: Node | null = null;
+  private hudProgress: Graphics | null = null;
   private contactNoticeTimer = 0;
 
   private aimGraphics: Graphics | null = null;
@@ -291,12 +293,13 @@ export class PuckBattleBootstrap extends Component {
       this.updateHud();
       const latest = contacts[contacts.length - 1];
       if (this.contactNotice) {
-        this.contactNotice.string = latest.text;
+        this.contactNotice.string = (latest.fusion ? '✦ ' : '★ ') + latest.text;
+        if (this.contactPlate) this.contactPlate.active = true;
         this.contactNotice.color = new Color(
           latest.color[0], latest.color[1], latest.color[2], 255);
         this.contactNotice.node.active = true;
         this.contactNotice.node.setSiblingIndex(this.node.children.length - 1);
-        this.contactNoticeTimer = 0.9;
+        this.contactNoticeTimer = 1.05;
       }
     }
     // Resolve Box2D tile contacts after the engine step. Fusion shockwaves
@@ -417,12 +420,90 @@ export class PuckBattleBootstrap extends Component {
       : new Color(75, 159, 215, 255);
     g.roundRect(-width / 2, -height / 2, width, height, 18);
     g.fill();
-    this.addChildLabel(
+    const caption = this.addChildLabel(
       node, title, width - 16, height - 6,
       Math.min(24, height * 0.38),
       accent ? new Color(69, 66, 77, 255) : Color.WHITE,
     );
+    const icon = this.actionIcon(name);
+    if (icon) {
+      caption.node.setPosition(12, 0, 0);
+      this.addVectorIcon(node, 'ActionIcon_' + name, icon,
+        -width / 2 + 32, 0, Math.min(19, height * 0.28),
+        accent ? new Color(84, 73, 74, 255) : Color.WHITE);
+    }
     return node;
+  }
+
+  /** Draw using Cocos Graphics; no missing emoji-font glyphs on WeChat. */
+  private actionIcon(name: string): string {
+    if (name.indexOf('MenuStart') >= 0) return 'impact';
+    if (name.indexOf('MenuPractice') >= 0) return 'bounce';
+    if (name.indexOf('MenuClassic') >= 0) return 'bounce';
+    if (name.indexOf('MenuDaily') >= 0) return 'ice';
+    if (name.indexOf('MenuHowTo') >= 0) return 'magnet';
+    if (name.indexOf('MenuBook') >= 0) return 'ice';
+    if (name.indexOf('UpgradeChoice') >= 0) return 'impact';
+    if (name.indexOf('PracticeAmmo_bounce') >= 0) return 'bounce';
+    if (name.indexOf('PracticeAmmo_magnet') >= 0) return 'magnet';
+    if (name.indexOf('PracticeAmmo_ice') >= 0) return 'ice';
+    if (name.indexOf('PracticeAmmo_impact') >= 0) return 'impact';
+    return '';
+  }
+
+  private addVectorIcon(parent: Node, name: string, kind: string,
+    x: number, y: number, radius: number, ink: Color): Node {
+    const node = this.makeRenderNode(name);
+    parent.addChild(node);
+    node.setPosition(x, y, 0);
+    node.addComponent(UITransform).setContentSize(radius * 2, radius * 2);
+    this.paintVectorIcon(node.addComponent(Graphics), kind, radius, ink);
+    return node;
+  }
+
+  private paintVectorIcon(g: Graphics, kind: string, r: number,
+    ink: Color): void {
+    g.fillColor = ink;
+    g.strokeColor = ink;
+    g.lineWidth = Math.max(2, r * 0.15);
+    if (kind === 'bounce') {
+      g.circle(-r * 0.33, r * 0.20, r * 0.11);
+      g.circle(r * 0.33, r * 0.20, r * 0.11);
+      g.fill();
+      g.moveTo(-r * 0.51, -r * 0.21);
+      g.lineTo(-r * 0.22, -r * 0.43);
+      g.lineTo(r * 0.22, -r * 0.43);
+      g.lineTo(r * 0.51, -r * 0.21);
+      g.stroke();
+    } else if (kind === 'magnet') {
+      g.moveTo(-r * 0.58, r * 0.60);
+      g.lineTo(-r * 0.58, -r * 0.23);
+      g.lineTo(-r * 0.25, -r * 0.55);
+      g.lineTo(r * 0.25, -r * 0.55);
+      g.lineTo(r * 0.58, -r * 0.23);
+      g.lineTo(r * 0.58, r * 0.60);
+      g.stroke();
+      g.rect(-r * 0.71, r * 0.37, r * 0.27, r * 0.22);
+      g.rect(r * 0.44, r * 0.37, r * 0.27, r * 0.22);
+      g.fill();
+    } else if (kind === 'ice') {
+      for (let i = 0; i < 3; i++) {
+        const a = i * Math.PI / 3;
+        g.moveTo(-Math.cos(a) * r * 0.72, -Math.sin(a) * r * 0.72);
+        g.lineTo(Math.cos(a) * r * 0.72, Math.sin(a) * r * 0.72);
+      }
+      g.stroke();
+      g.circle(0, 0, r * 0.16); g.fill();
+    } else {
+      for (let i = 0; i < 8; i++) {
+        const a = i * Math.PI / 4 - Math.PI / 2;
+        const distance = i % 2 ? r * 0.34 : r * 0.85;
+        const px = Math.cos(a) * distance;
+        const py = Math.sin(a) * distance;
+        if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+      }
+      g.close(); g.fill();
+    }
   }
 
   private createBackground(): void {
@@ -708,6 +789,11 @@ export class PuckBattleBootstrap extends Component {
     this.node.addChild(node);
     node.addComponent(UITransform).setContentSize(this.screenWidth, this.screenHeight);
     this.effectGraphics = node.addComponent(Graphics);
+    this.contactPlate = this.createPanel(this.node,
+      'ContactNoticePlate', 0, this.targetCenter.y - this.scoreRadii.outer - 48,
+      this.screenWidth * 0.70, 50, 17, new Color(255, 253, 246, 240),
+      new Color(255, 197, 122, 245));
+    this.contactPlate.active = false;
     this.contactNotice = this.addLabel(
       'PuckContactNotice', '', 0,
       this.targetCenter.y - this.scoreRadii.outer - 48,
@@ -721,6 +807,7 @@ export class PuckBattleBootstrap extends Component {
       this.contactNoticeTimer = Math.max(0, this.contactNoticeTimer - deltaTime);
       if (this.contactNoticeTimer === 0 && this.contactNotice) {
         this.contactNotice.node.active = false;
+        if (this.contactPlate) this.contactPlate.active = false;
       }
     }
     this.interactions.draw(
@@ -746,7 +833,16 @@ export class PuckBattleBootstrap extends Component {
 
   private createHud(): void {
     this.createPanel(this.node, 'HudCard', 0, this.screenHeight * 0.344,
-      this.screenWidth * 0.92, 164, 22, new Color(255, 255, 255, 247));
+      this.screenWidth * 0.92, 164, 22,
+      new Color(251, 255, 255, 251), new Color(139, 204, 218, 255));
+    const progress = this.makeRenderNode('HudProgressBar');
+    this.node.addChild(progress);
+    progress.setPosition(0, this.screenHeight * 0.287, 0);
+    progress.addComponent(UITransform).setContentSize(340, 12);
+    this.hudProgress = progress.addComponent(Graphics);
+    this.addVectorIcon(this.node, 'ScoreStar', 'impact',
+      -this.screenWidth * 0.40, this.screenHeight * 0.342,
+      11, new Color(240, 166, 61, 255));
 
     this.gameTitleLabel = this.addLabel(
       'GameTitleLabel', '词弹碰碰局', 0, this.screenHeight * 0.380,
@@ -1141,6 +1237,12 @@ export class PuckBattleBootstrap extends Component {
     g.fillColor = new Color(96, 178, 231, 255);
     g.circle(152, 54, 23); g.fill();
 
+    this.addVectorIcon(hero, 'MenuHappyPuck', 'bounce',
+      -151, -18, 14, new Color(108, 85, 57, 255));
+    this.addVectorIcon(hero, 'MenuMagnet', 'magnet',
+      152, 54, 12, Color.WHITE);
+    this.addVectorIcon(hero, 'MenuSpark', 'impact',
+      0, 9, 18, new Color(255, 248, 238, 255));
     const caption = this.addChildLabel(overlay, '击破汉字 · 组合弹药 · 挑战字王',
       width - 50, 40, 19, new Color(75, 119, 150, 255));
     caption.node.setPosition(0, -27, 0);
@@ -1543,9 +1645,13 @@ export class PuckBattleBootstrap extends Component {
     const wordLabel = wordLabelNode.addComponent(Label);
     wordLabel.string = ammo.word;
     wordLabel.fontSize = 11;
+    wordLabel.node.setPosition(0, -this.puckRadius * 0.42, 0);
     wordLabel.color = Color.WHITE;
     wordLabel.horizontalAlign = Label.HorizontalAlign.CENTER;
     wordLabel.verticalAlign = Label.VerticalAlign.CENTER;
+    this.addVectorIcon(node, 'AmmoIcon_' + ammo.type, ammo.type,
+      0, this.puckRadius * 0.20, this.puckRadius * 0.47,
+      new Color(255, 255, 255, 255));
 
     const body = node.addComponent(RigidBody2D);
     body.type = ERigidBody2DType.Dynamic;
@@ -1992,6 +2098,7 @@ export class PuckBattleBootstrap extends Component {
     this.effectGraphics?.clear();
     this.contactNoticeTimer = 0;
     if (this.contactNotice) this.contactNotice.node.active = false;
+    if (this.contactPlate) this.contactPlate.active = false;
     for (const puck of this.pucks) {
       puck.node.destroy();
     }
@@ -2070,6 +2177,24 @@ export class PuckBattleBootstrap extends Component {
           ? '连击 ' + this.comboStreak + '  ×' + multiplier.toFixed(2)
           : '连击待触发';
     }
+    if (this.hudProgress) {
+      const g = this.hudProgress;
+      g.clear();
+      const progress = this.arcade
+        ? this.arcade.totalBlocks > 0
+          ? this.arcade.destroyedBlocks / this.arcade.totalBlocks : 0
+        : this.practiceMode ? 0
+          : Math.min(1, this.comboStreak / 5);
+      g.fillColor = new Color(201, 223, 233, 255);
+      g.roundRect(-170, -5, 340, 10, 5); g.fill();
+      if (progress > 0) {
+        g.fillColor = this.arcade
+          ? new Color(78, 186, 156, 255)
+          : new Color(246, 179, 77, 255);
+        g.roundRect(-170, -5, Math.max(1, 340 * progress), 10, 5);
+        g.fill();
+      }
+    }
     if (this.missLabel) {
       this.missLabel.string = this.practiceMode
         ? '自由试射' : this.arcade
@@ -2103,7 +2228,7 @@ export class PuckBattleBootstrap extends Component {
     }
     if (this.hintLabel) {
       const last = hits[hits.length - 1];
-      this.hintLabel.string = '破字连锁 ×' + last.chain +
+      this.hintLabel.string = '✦ 破字连锁 ×' + last.chain +
         ' · +' + hits.reduce((sum, h) => sum + h.points, 0) +
         (rewards.length ? ' · 获得「' + rewards.join('') + '」' : '');
     }
@@ -2144,6 +2269,16 @@ export class PuckBattleBootstrap extends Component {
       const textNode = button?.children.find((n) => n.name === 'ButtonLabel');
       const label = textNode?.getComponent(Label);
       if (label) label.string = this.upgradeChoices[i].title;
+      if (button) {
+        const oldIcon = button.children.find((child) =>
+          child.name === 'UpgradeSelectedIcon');
+        if (oldIcon) oldIcon.destroy();
+        const id = this.upgradeChoices[i].id;
+        const kind = id === 'magnet' || id === 'ice' ||
+          id === 'bounce' || id === 'impact' ? id : 'spark';
+        this.addVectorIcon(button, 'UpgradeSelectedIcon', kind,
+          -170, 0, 17, Color.WHITE);
+      }
       const extra = this.upgradeDescriptionLabels[i];
       if (extra) extra.string = this.upgradeChoices[i].description;
     }
