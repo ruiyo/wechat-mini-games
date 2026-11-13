@@ -1,6 +1,5 @@
 import {
   findWord,
-  getRandomWordDefinition,
   WORD_DEFINITIONS,
 } from './WordDictionary';
 import type { WordDefinition } from './WordDictionary';
@@ -18,10 +17,20 @@ export class WordPuzzleController {
   private letters: string[] = [];
   private selectedIndices: number[] = [];
   private collectedGlyphs: string[] = [];
+  private nextRandom: () => number = Math.random;
 
-  reset(): void {
+  reset(seed?: number): void {
+    // Daily runs use a stable sequence; ordinary runs remain varied.
+    if (seed === undefined) this.nextRandom = Math.random;
+    else {
+      let state = seed >>> 0;
+      this.nextRandom = () => {
+        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+        return state / 4294967296;
+      };
+    }
     const pack = INITIAL_LETTER_PACKS[
-      Math.floor(Math.random() * INITIAL_LETTER_PACKS.length)
+      Math.floor(this.nextRandom() * INITIAL_LETTER_PACKS.length)
     ];
     this.letters = [...pack];
     this.selectedIndices = [];
@@ -113,17 +122,21 @@ export class WordPuzzleController {
     if (this.collectedGlyphs.length > 0) {
       const earned = this.collectedGlyphs.shift()!;
       const candidates = WORD_DEFINITIONS.filter((w) => w.word.includes(earned));
-      const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+      const chosen = candidates[Math.floor(this.nextRandom() * candidates.length)];
       // Put the won character on the tray NOW, not in an invisible inventory.
       refill = [earned, chosen.word[0] === earned ? chosen.word[1] : chosen.word[0]];
     } else {
-      refill = getRandomWordDefinition().word.split('');
+      refill = WORD_DEFINITIONS[
+        Math.floor(this.nextRandom() * WORD_DEFINITIONS.length)
+      ].word.split('');
     }
     this.letters.push(refill[0], refill[1]);
     this.selectedIndices = [];
     // Defensive fallback for future multi-character blocks/dictionary updates.
     if (!this.hasValidWord()) {
-      const fallback = getRandomWordDefinition().word.split('');
+      const fallback = WORD_DEFINITIONS[
+        Math.floor(this.nextRandom() * WORD_DEFINITIONS.length)
+      ].word.split('');
       this.letters.splice(4, 2, fallback[0], fallback[1]);
     }
 
