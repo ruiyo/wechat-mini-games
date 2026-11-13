@@ -2085,7 +2085,7 @@ export class PuckBattleBootstrap extends Component {
     const options = this.upgradeOverlay.children;
     for (let i = 0; i < this.upgradeChoices.length; i++) {
       const button = options.find((n) => n.name === 'UpgradeChoice_' + i);
-      const textNode = button?.children.find((n) => n.name === 'Label');
+      const textNode = button?.children.find((n) => n.name === 'ButtonLabel');
       const label = textNode?.getComponent(Label);
       if (label) label.string = this.upgradeChoices[i].title;
       const extra = this.upgradeDescriptionLabels[i];
