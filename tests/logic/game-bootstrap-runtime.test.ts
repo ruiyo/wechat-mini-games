@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Contact2DType, PhysicsSystem2D, sys } from 'cc';
+import { Contact2DType, ERigidBody2DType, PhysicsSystem2D, Vec2, sys } from 'cc';
 import { PuckBattleBootstrap } from '../../games/puck-battle/assets/scripts/PuckBattleBootstrap';
 import { WORD_UI_CONFIG } from '../../games/puck-battle/assets/scripts/GameConfig';
 
@@ -138,5 +138,72 @@ test('all four practice buttons create the intended ammo with unique colliders',
   }
   game.returnToHome();
   assert.equal(game.practiceMode, false);
+  game.onDestroy();
+});
+
+test('idle magnetic shot actively pulls old pucks and delays early settlement', () => {
+  const game = createGame();
+  tap(game, 0, -207);
+  // Magnetic ammo is the second practice button.
+  tap(game, 720 * (-0.1), -1280 * WORD_UI_CONFIG.tileYRatio);
+  assert.equal(game.currentPuck.ammo.type, 'magnet');
+  const shot = game.currentPuck;
+  const old = game.pucks[0];
+  shot.node.setPosition(old.node.position.x - 85, old.node.position.y);
+  const pos = shot.node.position;
+  game.onTouchStart(event(pos.x, pos.y));
+  game.onTouchMove(event(pos.x, pos.y - 125));
+  game.onTouchEnd(event(pos.x, pos.y - 125));
+  assert.equal(game.state, 5);
+  // The magnet comes to rest before its 3.2s field has expired.
+  shot.body.linearVelocity = new Vec2(0, 0);
+  old.body.linearVelocity = new Vec2(0, 0);
+  const original = old.body.linearVelocity.x;
+  game.update(1 / 60);
+  assert.notEqual(old.body.linearVelocity.x, original);
+  assert.ok(old.body.wakeCount > 0);
+  assert.equal(game.interactions.shouldDelayShotCompletion, true);
+  assert.equal(game.state, 5, 'should not finish while magnet can pull');
+  // Once the field ends, settle normally.
+  for (const puck of game.pucks) puck.body.linearVelocity = new Vec2();
+  game.update(3.3);
+  assert.equal(game.interactions.shouldDelayShotCompletion, false);
+  assert.equal(game.state, 6);
+  game.update(0.35);
+  assert.equal(game.state, 2);
+  game.onDestroy();
+});
+
+test('ice hard-freeze survives settling, word selection and paused time', () => {
+  const game = createGame();
+  tap(game, 0, -207);
+  // Ice ammo is the third practice button.
+  tap(game, 720 * 0.1, -1280 * WORD_UI_CONFIG.tileYRatio);
+  assert.equal(game.currentPuck.ammo.type, 'ice');
+  const old = game.pucks[0], shot = game.currentPuck;
+  shot.node.setPosition(old.node.position.x + 55, old.node.position.y);
+  const pos = shot.node.position;
+  game.onTouchStart(event(pos.x, pos.y));
+  game.onTouchMove(event(pos.x, pos.y - 100));
+  game.onTouchEnd(event(pos.x, pos.y - 100));
+  assert.equal(game.state, 5);
+  shot.body.linearVelocity = new Vec2(0, 0);
+  game.update(0.36);
+  assert.equal(old.body.type, ERigidBody2DType.Static);
+  assert.equal(old.body.linearVelocity.x, 0);
+  game.finishCurrentShot();
+  assert.equal(game.state, 2);
+  assert.equal(old.body.type, ERigidBody2DType.Static,
+    'ice must remain locked during next word selection');
+  game.update(0.3);
+  const timeRemaining = old.freezeRemaining;
+  tap(game, 720 * 0.36, 1280 * 0.38);
+  game.update(10);
+  assert.equal(old.freezeRemaining, timeRemaining,
+    'paused game may not silently consume freeze duration');
+  tap(game, 0, 22);
+  game.update(2.5);
+  assert.equal(old.body.type, ERigidBody2DType.Dynamic);
+  assert.equal(old.freezeRemaining, 0);
   game.onDestroy();
 });
