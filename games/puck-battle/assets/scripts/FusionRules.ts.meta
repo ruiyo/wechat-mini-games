@@ -1,0 +1,13 @@
+{
+  "ver": "4.0.21",
+  "importer": "typescript",
+  "imported": true,
+  "uuid": "b6e94eac-6514-4c39-a284-c2ecdecb1084",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "importAsPlugin": false,
+    "moduleId": "project:///assets/scripts/FusionRules.js",
+    "importerSettings": 7
+  }
+}
