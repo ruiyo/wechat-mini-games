@@ -1,6 +1,7 @@
 import {
   findWord,
   getRandomWordDefinition,
+  WORD_DEFINITIONS,
 } from './WordDictionary';
 import type { WordDefinition } from './WordDictionary';
 
@@ -16,6 +17,7 @@ const INITIAL_LETTER_PACKS: string[][] = [
 export class WordPuzzleController {
   private letters: string[] = [];
   private selectedIndices: number[] = [];
+  private collectedGlyphs: string[] = [];
 
   reset(): void {
     const pack = INITIAL_LETTER_PACKS[
@@ -23,11 +25,23 @@ export class WordPuzzleController {
     ];
     this.letters = [...pack];
     this.selectedIndices = [];
+    this.collectedGlyphs = [];
   }
 
   getLetters(): string[] {
     return [...this.letters];
   }
+
+  collectGlyph(glyph: string): boolean {
+    // Battle drops remain a tactical resource. They are inserted at the next
+    // refill, paired with a dictionary partner so six cards never deadlock.
+    if (!glyph || !WORD_DEFINITIONS.some((w) => w.word.includes(glyph))) return false;
+    if (this.collectedGlyphs.length >= 12) this.collectedGlyphs.shift();
+    this.collectedGlyphs.push(glyph);
+    return true;
+  }
+
+  getQueuedGlyphs(): string[] { return this.collectedGlyphs.slice(); }
 
   getSelectedIndices(): number[] {
     return [...this.selectedIndices];
@@ -95,9 +109,23 @@ export class WordPuzzleController {
       this.letters.splice(index, 1);
     }
 
-    const refill = getRandomWordDefinition().word.split('');
+    let refill: string[];
+    if (this.collectedGlyphs.length > 0) {
+      const earned = this.collectedGlyphs.shift()!;
+      const candidates = WORD_DEFINITIONS.filter((w) => w.word.includes(earned));
+      const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+      // Put the won character on the tray NOW, not in an invisible inventory.
+      refill = [earned, chosen.word[0] === earned ? chosen.word[1] : chosen.word[0]];
+    } else {
+      refill = getRandomWordDefinition().word.split('');
+    }
     this.letters.push(refill[0], refill[1]);
     this.selectedIndices = [];
+    // Defensive fallback for future multi-character blocks/dictionary updates.
+    if (!this.hasValidWord()) {
+      const fallback = getRandomWordDefinition().word.split('');
+      this.letters.splice(4, 2, fallback[0], fallback[1]);
+    }
 
     return definition;
   }
