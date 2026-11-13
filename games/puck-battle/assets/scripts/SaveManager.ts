@@ -28,6 +28,22 @@ export class SaveManager {
     return best;
   }
 
+  /** Offline daily challenge records; no server login or leaderboard required. */
+  static getDailyBestScore(dateId: string): number {
+    try {
+      const result = Number(sys.localStorage.getItem('word-puck.daily.' + dateId) || 0);
+      return Number.isFinite(result) && result > 0 ? Math.floor(result) : 0;
+    } catch { return 0; }
+  }
+
+  static saveDailyBestScore(dateId: string, score: number): number {
+    const best = Math.max(this.getDailyBestScore(dateId),
+      Math.max(0, Math.floor(score)));
+    try { sys.localStorage.setItem('word-puck.daily.' + dateId, String(best)); }
+    catch (error) { console.warn('[WordPuck] Unable to save daily score:', error); }
+    return best;
+  }
+
   static getSoundEnabled(): boolean {
     try {
       return sys.localStorage.getItem(SOUND_KEY) !== 'false';
