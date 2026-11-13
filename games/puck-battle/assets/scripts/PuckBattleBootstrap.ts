@@ -237,23 +237,26 @@ export class PuckBattleBootstrap extends Component {
   }
 
   update(deltaTime: number): void {
-    if (!this.physicsReady) return;
+    if (!this.physicsReady || this.state === GameState.PAUSED ||
+        this.state === GameState.MENU || this.state === GameState.RESULT) return;
+
     const activeFlight = this.state === GameState.FLYING ||
       this.state === GameState.SETTLING;
-    if (!activeFlight) {
-      this.updateInteractionVisuals(deltaTime);
-      return;
+    if (activeFlight) {
+      for (const puck of this.pucks) {
+        // Frozen bodies are Static. Flight tuning must not undo that lock.
+        if (puck.freezeRemaining > 0) continue;
+        AmmoEffectController.updateFlight(
+          puck.body, puck.node, puck.ammo,
+          this.targetCenter, this.scoreRadii.outer, deltaTime,
+        );
+      }
     }
 
-    for (const puck of this.pucks) {
-      AmmoEffectController.updateFlight(
-        puck.body, puck.node, puck.ammo,
-        this.targetCenter, this.scoreRadii.outer, deltaTime,
-      );
-    }
-
-    // Box2D contact callbacks only enqueue data. Process after the physics
-    // solver has finished so both colliding rigidbodies remain physical.
+    // Also update while choosing the next word: ice locks persist across
+    // shots and must thaw on time, but pause must not run the countdown.
+    // Physics contact callbacks only enqueue events; the solver never
+    // receives unsafe velocity/body-type changes while locked.
     const contacts = this.interactions.update(deltaTime);
     if (contacts.length > 0) {
       this.updateHud();
@@ -268,6 +271,11 @@ export class PuckBattleBootstrap extends Component {
       }
     }
     this.updateInteractionVisuals(deltaTime);
+    if (!activeFlight) return;
+
+    if (this.interactions.shouldDelayShotCompletion && this.hintLabel) {
+      this.hintLabel.string = '磁场牵引中 · 旧弹药正在被吸引';
+    }
     this.shotElapsed += deltaTime;
 
     if (this.shotElapsed >= PUCK_CONFIG.maxShotDuration) {
@@ -288,7 +296,7 @@ export class PuckBattleBootstrap extends Component {
       }
     }
 
-    if (moving) {
+    if (moving || this.interactions.shouldDelayShotCompletion) {
       this.state = GameState.FLYING;
       this.settleElapsed = 0;
       return;
