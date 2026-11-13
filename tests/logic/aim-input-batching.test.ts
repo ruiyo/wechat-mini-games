@@ -12,8 +12,8 @@ function event(x: number, y: number, id = 1) {
 test('many touch moves draw at most once per game update', () => {
   const game: any = new PuckBattleBootstrap();
   game.onLoad();
-  game.adventureMode = true;
-  game.restartRun();
+  game.onTouchStart(event(0, -124)); // open main menu's adventure button
+  assert.equal(game.menuOverlay.active, false);
   game.wordPuzzle.suggestWord();
   game.confirmWord();
   const p = game.currentPuck.node.position;
@@ -38,8 +38,8 @@ test('many touch moves draw at most once per game update', () => {
 test('invalid short pull and cancelled second finger restore ready hint', () => {
   const game: any = new PuckBattleBootstrap();
   game.onLoad();
-  game.practiceMode = true;
-  game.restartRun();
+  game.onTouchStart(event(0, -207)); // open practice from the menu
+  assert.equal(game.menuOverlay.active, false);
   game.handlePracticeAmmoInput(game.practiceAmmoCenters[0]);
   const p = game.currentPuck.node.position;
   game.onTouchStart(event(p.x, p.y, 4));
