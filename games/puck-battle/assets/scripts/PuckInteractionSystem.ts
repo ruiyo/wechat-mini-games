@@ -159,8 +159,9 @@ export class PuckInteractionSystem {
     if (!this.active) return;
     const first = this.registered.get(self);
     const second = this.registered.get(other);
-    // Every pair sends two callbacks, one from each collider. Count it once.
-    if (!first || !second || first === second || first.index > second.index) return;
+    // Some Cocos backends may deliver only one collider callback.
+    // Never discard the event based on callback order: dedupe by sorted IDs.
+    if (!first || !second || first === second) return;
     const source = first === this.active ? first : second === this.active ? second : first;
     const target = source === first ? second : first;
     const a = source.body.linearVelocity, b = target.body.linearVelocity;
@@ -169,7 +170,8 @@ export class PuckInteractionSystem {
       target.node.position.x, target.node.position.y, b.x, b.y,
     );
     if (normal.relativeSpeed < INTERACTION_CONFIG.minContactSpeed) return;
-    const pairKey = first.index + ':' + second.index;
+    const pairKey = Math.min(first.index, second.index) + ':' +
+      Math.max(first.index, second.index);
     const previous = this.lastContact.get(pairKey);
     if (previous !== undefined &&
         this.elapsed - previous < INTERACTION_CONFIG.contactCooldown) return;
