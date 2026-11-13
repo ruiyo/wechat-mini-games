@@ -25,6 +25,7 @@ export interface CollisionFeedback {
   x: number;
   y: number;
   fusion?: FusionRecipe;
+  resonance?: number;
 }
 interface QueuedContact {
   source: InteractionPuck;
@@ -63,6 +64,7 @@ export class PuckInteractionSystem {
   private readonly iceCloudTargets = new Set<number>();
   private magnetNoticeSent = false;
   private readonly fusedPairs = new Set<string>();
+  private resonanceLevel = 0;
   private fusionAttractor: { x: number; y: number; seconds: number; radius: number } | null = null;
 
   get collisionCount(): number { return this.collisions; }
@@ -124,6 +126,7 @@ export class PuckInteractionSystem {
     this.pending.length = 0;
     this.lastContact.clear();
     this.fusedPairs.clear();
+    this.resonanceLevel = 0;
     this.fusionAttractor = null;
     this.elapsed = 0;
     this.iceBurstUsed = false;
@@ -148,6 +151,7 @@ export class PuckInteractionSystem {
     this.pending.length = 0;
     this.lastContact.clear();
     this.fusedPairs.clear();
+    this.resonanceLevel = 0;
     this.fusionAttractor = null;
     for (const puck of this.registered.snapshot()) this.releaseFreeze(puck);
     const removed = this.registered.clear();
@@ -373,6 +377,7 @@ export class PuckInteractionSystem {
       const fuseKey = Math.min(c.source.index, c.target.index) + ':' +
         Math.max(c.source.index, c.target.index);
       let fusion: FusionRecipe | undefined;
+      let resonance: number | undefined;
       if (!this.fusedPairs.has(fuseKey)) {
         const recipe = getFusionRecipe(c.source.ammo.type, c.target.ammo.type);
         if (recipe) {
@@ -381,10 +386,26 @@ export class PuckInteractionSystem {
           this.activateFusion(recipe, c.x, c.y);
           text += ' · 融合「' + recipe.name + '」';
           radius = Math.max(radius, recipe.radius * 0.5);
+        } else if (this.active === c.source &&
+            c.source.ammo.type === c.target.ammo.type) {
+          // Identical shots do not have a 2-type recipe; they resonate.
+          // Cap the stack at Lv3, and prevent repeated collision farming.
+          this.fusedPairs.add(fuseKey);
+          this.resonanceLevel = Math.min(3, this.resonanceLevel + 1);
+          resonance = this.resonanceLevel;
+          const v = c.source.body.linearVelocity;
+          c.source.body.wakeUp();
+          c.source.body.linearVelocity = new Vec2(
+            v.x * (1 + 0.1 * resonance),
+            v.y * (1 + 0.1 * resonance),
+          );
+          c.source.ammo.scoreMultiplier *= 1.14;
+          text += ' · 同型共鸣 Lv' + resonance;
+          radius = Math.max(radius, 78);
         }
       }
       this.addPulse(c.x, c.y, radius, color);
-      feedback.push({ text, color, x: c.x, y: c.y, fusion });
+      feedback.push({ text, color, x: c.x, y: c.y, fusion, resonance });
     }
 
     // Frozen bodies are Static for the full countdown. Never apply magnet
