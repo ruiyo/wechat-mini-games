@@ -8,6 +8,8 @@ import {
   calculateMagnetDeltaVelocity,
 } from './PuckInteractionRules';
 import { StableColliderRegistry } from './StableColliderRegistry';
+import { getFusionRecipe } from './FusionRules';
+import type { FusionRecipe } from './FusionRules';
 
 export interface InteractionPuck {
   readonly node: Node;
@@ -22,6 +24,7 @@ export interface CollisionFeedback {
   color: [number, number, number];
   x: number;
   y: number;
+  fusion?: FusionRecipe;
 }
 interface QueuedContact {
   source: InteractionPuck;
@@ -59,6 +62,8 @@ export class PuckInteractionSystem {
   private iceCloudCenter = new Vec2();
   private readonly iceCloudTargets = new Set<number>();
   private magnetNoticeSent = false;
+  private readonly fusedPairs = new Set<string>();
+  private fusionAttractor: { x: number; y: number; seconds: number; radius: number } | null = null;
 
   get collisionCount(): number { return this.collisions; }
 
@@ -118,6 +123,8 @@ export class PuckInteractionSystem {
     this.active = puck;
     this.pending.length = 0;
     this.lastContact.clear();
+    this.fusedPairs.clear();
+    this.fusionAttractor = null;
     this.elapsed = 0;
     this.iceBurstUsed = false;
     this.magnetNoticeSent = false;
@@ -132,6 +139,7 @@ export class PuckInteractionSystem {
     this.active = null;
     this.pending.length = 0;
     this.lastContact.clear();
+    this.fusionAttractor = null;
   }
 
   reset(): void {
@@ -139,6 +147,8 @@ export class PuckInteractionSystem {
     this.active = null;
     this.pending.length = 0;
     this.lastContact.clear();
+    this.fusedPairs.clear();
+    this.fusionAttractor = null;
     for (const puck of this.registered.snapshot()) this.releaseFreeze(puck);
     const removed = this.registered.clear();
     for (const puck of removed) {
@@ -243,6 +253,73 @@ export class PuckInteractionSystem {
     if (this.pulses.length > 8) this.pulses.shift();
   }
 
+
+  /**
+   * Two different pucks activate a one-shot synergy. Unlike a purely
+   * cosmetic fusion, these effects alter nearby physical bodies and
+   * pass a radius/damage event to the destructible glyph arena.
+   */
+  private activateFusion(recipe: FusionRecipe, x: number, y: number): void {
+    const pull = recipe.id === 'magnet-ice' || recipe.id === 'bounce-magnet';
+    const freeze = recipe.id === 'magnet-ice' || recipe.id === 'bounce-ice';
+    const shatter = recipe.id === 'ice-impact';
+    const push = recipe.id === 'bounce-impact' ||
+      recipe.id === 'magnet-impact' || shatter;
+
+    for (const puck of this.registered.snapshot()) {
+      if (puck === this.active) continue;
+      const dx = puck.node.position.x - x;
+      const dy = puck.node.position.y - y;
+      const distance = Math.hypot(dx, dy);
+      if (distance >= recipe.radius || distance <= 0.001) continue;
+      if (shatter && puck.freezeRemaining > 0) this.releaseFreeze(puck);
+      if (pull && puck.freezeRemaining <= 0) {
+        const dv = calculateMagnetDeltaVelocity(-dx, -dy,
+          1 / 30, recipe.radius, 4600);
+        puck.body.wakeUp();
+        const v = puck.body.linearVelocity;
+        puck.body.linearVelocity = new Vec2(v.x + dv.x * 2, v.y + dv.y * 2);
+      }
+      if (freeze) this.lockPuck(puck);
+      if (push && puck.freezeRemaining <= 0) {
+        puck.body.wakeUp();
+        const v = puck.body.linearVelocity;
+        const kick = Math.max(90, 250 * (1 - distance / recipe.radius));
+        puck.body.linearVelocity = new Vec2(
+          v.x + dx / distance * kick, v.y + dy / distance * kick,
+        );
+      }
+    }
+    if (recipe.id === 'bounce-magnet') {
+      this.fusionAttractor = {
+        x, y, seconds: 1.2, radius: recipe.radius,
+      };
+    }
+    this.addPulse(x, y, recipe.radius, recipe.color);
+  }
+
+  private tickFusionAttractor(deltaTime: number): void {
+    const field = this.fusionAttractor;
+    if (!field) return;
+    field.seconds = Math.max(0, field.seconds - deltaTime);
+    if (field.seconds <= 0) {
+      this.fusionAttractor = null;
+      return;
+    }
+    for (const puck of this.registered.snapshot()) {
+      if (puck === this.active || puck.freezeRemaining > 0 ||
+          puck.body.type !== ERigidBody2DType.Dynamic) continue;
+      const dv = calculateMagnetDeltaVelocity(
+        field.x - puck.node.position.x, field.y - puck.node.position.y,
+        deltaTime, field.radius, 2500,
+      );
+      if (dv.x === 0 && dv.y === 0) continue;
+      puck.body.wakeUp();
+      const v = puck.body.linearVelocity;
+      puck.body.linearVelocity = new Vec2(v.x + dv.x, v.y + dv.y);
+    }
+  }
+
   /**
    * Must run even during WORD_SELECT/READY because frozen objects remain
    * physically locked across rounds. The bootstrap skips updates on pause.
@@ -291,8 +368,23 @@ export class PuckInteractionSystem {
         text = '弹开！高弹性碰撞';
         color = [252, 186, 66];
       }
+      // Each unordered pair may fuse only once per shot, regardless of the
+      // order of Box2D contact callbacks or repeated wall bounces.
+      const fuseKey = Math.min(c.source.index, c.target.index) + ':' +
+        Math.max(c.source.index, c.target.index);
+      let fusion: FusionRecipe | undefined;
+      if (!this.fusedPairs.has(fuseKey)) {
+        const recipe = getFusionRecipe(c.source.ammo.type, c.target.ammo.type);
+        if (recipe) {
+          this.fusedPairs.add(fuseKey);
+          fusion = recipe;
+          this.activateFusion(recipe, c.x, c.y);
+          text += ' · 融合「' + recipe.name + '」';
+          radius = Math.max(radius, recipe.radius * 0.5);
+        }
+      }
       this.addPulse(c.x, c.y, radius, color);
-      feedback.push({ text, color, x: c.x, y: c.y });
+      feedback.push({ text, color, x: c.x, y: c.y, fusion });
     }
 
     // Frozen bodies are Static for the full countdown. Never apply magnet
@@ -315,6 +407,8 @@ export class PuckInteractionSystem {
       this.iceCloudRemaining = Math.max(0, this.iceCloudRemaining - deltaTime);
       if (this.iceCloudRemaining <= 0) this.iceCloudTargets.clear();
     }
+
+    this.tickFusionAttractor(deltaTime);
 
     const shot = this.active;
     if (shot?.ammo.type === 'ice' && !this.iceBurstUsed &&
