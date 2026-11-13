@@ -21,6 +21,7 @@ export class Node {
   };
   position = new Vec2();
   layer = 524288;
+  angle = 0;
   active = true;
   destroyed = false;
   parent: Node | null = null;
@@ -119,6 +120,9 @@ export class CircleCollider2D extends Collider2D {
 }
 export class BoxCollider2D extends CircleCollider2D {
   size = new Size();
+}
+export class PolygonCollider2D extends CircleCollider2D {
+  points: Vec2[] = [];
 }
 export const Contact2DType = {
   BEGIN_CONTACT: 'begin-contact',

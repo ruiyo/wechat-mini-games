@@ -9,6 +9,7 @@ import {
   Graphics,
   Label,
   Node,
+  PolygonCollider2D,
   PhysicsSystem2D,
   RigidBody2D,
   Size,
@@ -37,6 +38,8 @@ import {
 } from './ArcadeProgression';
 import type { UpgradeDefinition } from './ArcadeProgression';
 import { chainPoints } from './FusionRules';
+import { getObstaclesForMode, getObstacleVertices } from './ObstacleLayout';
+import type { ObstaclePoint, ObstacleSpec } from './ObstacleLayout';
 
 const { ccclass } = _decorator;
 
@@ -92,6 +95,7 @@ export class PuckBattleBootstrap extends Component {
   private dailyDateId = '';
   private arcade: ArcadeRunProgress | null = null;
   private glyphArena: GlyphBlockArena | null = null;
+  private obstacleNodes: Node[] = [];
   private blockScore = 0;
   private fusionScore = 0;
   private upgradeOverlay: Node | null = null;
@@ -213,7 +217,7 @@ export class PuckBattleBootstrap extends Component {
     this.createBackground();
     this.createArenaVisuals();
     this.createWalls();
-    this.createBumpers();
+    this.rebuildObstacles();
     // The arena is constructed once; stages only create/destroy tile nodes.
     this.glyphArena = new GlyphBlockArena(this.node, (name) => this.makeRenderNode(name));
     this.createEffectLayer();
@@ -253,6 +257,7 @@ export class PuckBattleBootstrap extends Component {
   onDestroy(): void {
     this.glyphArena?.clear();
     this.interactions.reset();
+    this.clearObstacles();
     this.node.off(Node.EventType.TOUCH_START, this.onTouchStart, this);
     this.node.off(Node.EventType.TOUCH_MOVE, this.onTouchMove, this);
     this.node.off(Node.EventType.TOUCH_END, this.onTouchEnd, this);
@@ -593,66 +598,109 @@ export class PuckBattleBootstrap extends Component {
     collider.apply();
   }
 
-  private createBumpers(): void {
-    const y = this.arenaCenterY + this.arenaHeight * 0.025;
-    this.createBumper(
-      'BumperLeft',
-      -this.arenaWidth * 0.23,
-      y,
-      22,
-      new Color(255, 190, 100, 255),
-    );
-    this.createBumper(
-      'BumperRight',
-      this.arenaWidth * 0.23,
-      y,
-      22,
-      new Color(255, 190, 100, 255),
-    );
-    this.createBumper(
-      'BumperCenter',
-      0,
-      this.arenaCenterY - this.arenaHeight * 0.12,
-      18,
-      new Color(130, 197, 235, 255),
-    );
+
+  private clearObstacles(): void {
+    for (const node of this.obstacleNodes) node.destroy();
+    this.obstacleNodes.length = 0;
   }
 
-  private createBumper(
-    name: string,
-    x: number,
-    y: number,
-    radius: number,
-    color: Color,
-  ): void {
-    const node = this.makeRenderNode(name);
+  private obstaclePath(g: Graphics, points: ObstaclePoint[],
+    offsetX = 0, offsetY = 0): void {
+    if (points.length === 0) return;
+    g.moveTo(points[0].x + offsetX, points[0].y + offsetY);
+    for (let i = 1; i < points.length; i++) {
+      g.lineTo(points[i].x + offsetX, points[i].y + offsetY);
+    }
+    g.close();
+  }
+
+  /** Geometry and physical collider use the same vertices and rotation. */
+  private rebuildObstacles(): void {
+    this.clearObstacles();
+    const mode = this.practiceMode ? 'practice'
+      : this.arcade ? 'adventure' : 'classic';
+    const layout = getObstaclesForMode(mode, this.arcade?.stage || 1);
+    for (const spec of layout) this.spawnObstacle(spec);
+  }
+
+  private spawnObstacle(spec: ObstacleSpec): void {
+    const node = this.makeRenderNode('Obstacle_' + spec.id);
     this.node.addChild(node);
-    node.setPosition(x, y, 0);
-
-    const transform = node.addComponent(UITransform);
-    transform.setContentSize(radius * 2, radius * 2);
-
-    const graphics = node.addComponent(Graphics);
-    graphics.fillColor = color;
-    graphics.circle(0, 0, radius);
-    graphics.fill();
-    graphics.lineWidth = 3;
-    graphics.strokeColor = Color.WHITE;
-    graphics.circle(0, 0, radius);
-    graphics.stroke();
+    node.setPosition(spec.x * this.arenaWidth,
+      this.arenaCenterY + spec.y * this.arenaHeight, 0);
+    node.angle = spec.angle;
+    node.addComponent(UITransform).setContentSize(spec.width, spec.height);
+    const g = node.addComponent(Graphics);
+    const points = getObstacleVertices(spec);
+    const round = spec.kind === 'brick' || spec.kind === 'bar';
+    const fill = spec.kind === 'triangle' ? new Color(246, 177, 97, 255)
+      : spec.kind === 'diamond' ? new Color(169, 141, 213, 255)
+      : spec.kind === 'hex' ? new Color(122, 155, 201, 255)
+      : spec.kind === 'bar' ? new Color(98, 190, 177, 255)
+      : new Color(111, 155, 188, 255);
+    // Slight extruded shadow and a pale glint keep obstacle silhouettes
+    // separate from colourful breakable Hanzi tiles.
+    g.fillColor = new Color(32, 72, 111, 72);
+    if (round) {
+      g.roundRect(-spec.width / 2 + 2, -spec.height / 2 - 4,
+        spec.width, spec.height, 5);
+    } else {
+      this.obstaclePath(g, points, 2, -4);
+    }
+    g.fill();
+    g.fillColor = fill;
+    if (round) {
+      g.roundRect(-spec.width / 2, -spec.height / 2,
+        spec.width, spec.height, 5);
+    } else {
+      this.obstaclePath(g, points);
+    }
+    g.fill();
+    g.strokeColor = new Color(255, 255, 255, 240);
+    g.lineWidth = 3;
+    if (round) {
+      g.roundRect(-spec.width / 2, -spec.height / 2,
+        spec.width, spec.height, 5);
+    } else {
+      this.obstaclePath(g, points);
+    }
+    g.stroke();
+    // Directional detail instead of text prevents confusion with word tiles.
+    g.strokeColor = new Color(255, 255, 255, 188);
+    g.lineWidth = 2;
+    if (spec.kind === 'triangle') {
+      g.moveTo(-10, -8); g.lineTo(0, 10); g.lineTo(10, -8);
+    } else if (spec.kind === 'diamond' || spec.kind === 'hex') {
+      g.moveTo(-8, 0); g.lineTo(8, 0);
+      g.moveTo(0, -8); g.lineTo(0, 8);
+    } else {
+      g.moveTo(-spec.width * 0.32, spec.height * 0.1);
+      g.lineTo(spec.width * 0.32, spec.height * 0.1);
+    }
+    g.stroke();
 
     const body = node.addComponent(RigidBody2D);
     body.type = ERigidBody2DType.Static;
     body.gravityScale = 0;
-
-    const collider = node.addComponent(CircleCollider2D);
-    collider.radius = radius;
     body.group = 1;
-    collider.group = 1;
-    collider.sensor = false;
-    collider.friction = 0.12;
-    collider.restitution = 0.78;
-    collider.apply();
+    if (round) {
+      const collider = node.addComponent(BoxCollider2D);
+      collider.size = new Size(spec.width, spec.height);
+      collider.group = 1;
+      collider.sensor = false;
+      collider.friction = 0.12;
+      collider.restitution = spec.restitution;
+      collider.apply();
+    } else {
+      const collider = node.addComponent(PolygonCollider2D);
+      collider.points = points.map((v) => new Vec2(v.x, v.y));
+      collider.group = 1;
+      collider.sensor = false;
+      collider.friction = 0.12;
+      collider.restitution = spec.restitution;
+      collider.apply();
+    }
+    this.obstacleNodes.push(node);
   }
 
   private createEffectLayer(): void {
@@ -1982,6 +2030,7 @@ export class PuckBattleBootstrap extends Component {
     if (this.upgradeOverlay) this.upgradeOverlay.active = false;
     if (this.resultLabel) this.resultLabel.node.active = true;
     this.clearAim();
+    if (!this.arcade) this.rebuildObstacles();
     if (this.practiceMode && this.physicsReady) this.spawnPracticeTargets();
     this.showWordState();
     this.updateHud();
@@ -2037,6 +2086,7 @@ export class PuckBattleBootstrap extends Component {
     this.glyphArena.configure(this.arcade.blockDamageBonus, this.arcade.chainBonus);
     this.glyphArena.startStage(stage,
       this.arenaWidth, this.arenaHeight, this.arenaCenterY);
+    this.rebuildObstacles();
   }
 
   private receiveGlyphHits(hits: GlyphBlockHit[]): void {

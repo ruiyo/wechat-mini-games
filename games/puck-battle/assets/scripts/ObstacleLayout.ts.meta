@@ -1,0 +1,13 @@
+{
+  "ver": "4.0.21",
+  "importer": "typescript",
+  "imported": true,
+  "uuid": "bd28a6e1-df2f-4ba1-9283-4b87c3b2a118",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "importAsPlugin": false,
+    "moduleId": "project:///assets/scripts/ObstacleLayout.js",
+    "importerSettings": 7
+  }
+}

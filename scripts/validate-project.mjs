@@ -24,6 +24,8 @@ const required = [
   projectRoot + '/assets/scripts/PuckBattleBootstrap.ts.meta',
   projectRoot + '/assets/scripts/GameConfig.ts',
   projectRoot + '/assets/scripts/WordDictionary.ts',
+  projectRoot + '/assets/scripts/ObstacleLayout.ts',
+  projectRoot + '/assets/scripts/ObstacleLayout.ts.meta',
   projectRoot + '/assets/scripts/WordPuzzleController.ts',
   projectRoot + '/assets/scripts/AmmoFactory.ts',
   projectRoot + '/assets/scripts/AmmoEffectController.ts',
