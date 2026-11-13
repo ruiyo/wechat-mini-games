@@ -40,7 +40,10 @@ import {
 } from './ArcadeProgression';
 import type { UpgradeDefinition } from './ArcadeProgression';
 import { chainPoints } from './FusionRules';
-import { getObstaclesForMode, getObstacleVertices } from './ObstacleLayout';
+import {
+  clipGuideAtObstacles, getObstaclesForMode, getObstacleVertices,
+  obstacleGuideLabel,
+} from './ObstacleLayout';
 import type { ObstaclePoint, ObstacleSpec } from './ObstacleLayout';
 
 const { ccclass } = _decorator;
@@ -98,6 +101,7 @@ export class PuckBattleBootstrap extends Component {
   private arcade: ArcadeRunProgress | null = null;
   private glyphArena: GlyphBlockArena | null = null;
   private obstacleNodes: Node[] = [];
+  private activeObstacleSpecs: ObstacleSpec[] = [];
   private obstacleColliders = new Map<Collider2D, ObstacleSpec>();
   private pendingObstacleContacts: ObstacleSpec[] = [];
   private activatedObstacleEffects = new Set<string>();
@@ -120,6 +124,7 @@ export class PuckBattleBootstrap extends Component {
   private runDiscoveredWords = new Set<string>();
 
   private isDragging = false;
+  private aimDirty = false;
   private activeTouchId: number | null = null;
   private dragStart = new Vec2();
   private dragTouchStart = new Vec2();
@@ -276,6 +281,10 @@ export class PuckBattleBootstrap extends Component {
         this.state === GameState.MENU || this.state === GameState.RESULT ||
         this.state === GameState.UPGRADE) return;
 
+    if (this.state === GameState.AIMING && this.aimDirty) {
+      this.aimDirty = false;
+      this.drawAim();
+    }
     const activeFlight = this.state === GameState.FLYING ||
       this.state === GameState.SETTLING;
     if (activeFlight) {
@@ -696,6 +705,7 @@ export class PuckBattleBootstrap extends Component {
       collider.off(Contact2DType.BEGIN_CONTACT, this.onObstacleContact, this);
     }
     this.obstacleColliders.clear();
+    this.activeObstacleSpecs = [];
     this.pendingObstacleContacts.length = 0;
     this.activatedObstacleEffects.clear();
     for (const node of this.obstacleNodes) node.destroy();
@@ -718,6 +728,7 @@ export class PuckBattleBootstrap extends Component {
     const mode = this.practiceMode ? 'practice'
       : this.arcade ? 'adventure' : 'classic';
     const layout = getObstaclesForMode(mode, this.arcade?.stage || 1);
+    this.activeObstacleSpecs = layout;
     for (const spec of layout) this.spawnObstacle(spec);
   }
 
@@ -1922,6 +1933,9 @@ export class PuckBattleBootstrap extends Component {
     this.dragStart = new Vec2(puckPosition.x, puckPosition.y);
     this.dragTouchStart = point;
     this.dragCurrent = point;
+    // Only raise the overlay at the start; sibling reordering on every
+    // touch move is expensive and can cause touch-frame stutter.
+    this.aimGraphics?.node.setSiblingIndex(this.node.children.length - 1);
     this.drawAim();
   }
 
@@ -1932,7 +1946,9 @@ export class PuckBattleBootstrap extends Component {
     if (distanceBetween(next.x, next.y, this.dragCurrent.x, this.dragCurrent.y) <
         AIM_CONFIG.moveRedrawThreshold) return;
     this.dragCurrent = next;
-    this.drawAim();
+    // A 120Hz touch stream may emit several events per rendered frame.
+    // Render the latest pointer once on the next game update instead.
+    this.aimDirty = true;
   }
 
   private onTouchEnd(event: EventTouch): void {
@@ -1953,6 +1969,7 @@ export class PuckBattleBootstrap extends Component {
     );
     if (!aim.ready || !puck || !ammo) {
       this.state = GameState.READY;
+      this.showAmmoState();
       return;
     }
 
@@ -1986,6 +2003,7 @@ export class PuckBattleBootstrap extends Component {
     this.clearAim();
     if (this.state === GameState.AIMING) {
       this.state = GameState.READY;
+      this.showAmmoState();
     }
   }
 
@@ -2001,7 +2019,6 @@ export class PuckBattleBootstrap extends Component {
     if (!this.aimGraphics || !this.currentPuck) return;
     const graphics = this.aimGraphics;
     graphics.clear();
-    graphics.node.setSiblingIndex(this.node.children.length - 1);
     const aim = calculateAim(
       this.dragTouchStart.x, this.dragTouchStart.y,
       this.dragCurrent.x, this.dragCurrent.y,
@@ -2016,11 +2033,15 @@ export class PuckBattleBootstrap extends Component {
         ? '力度 ' + Math.round(powerRatio * 100) + '% · 松开发射'
         : '向后拖动瞄准 · 松手取消';
     }
-    if (!aim.ready) return;
+    if (!aim.ready) {
+      if (this.hintLabel) this.hintLabel.string = '轻拖不会发射 · 再向后拖动一些';
+      return;
+    }
 
-    // Wall-only preview: bumpers, other pucks and ammo effects can alter the real shot.
+    // Geometry can now truncate the wall-only preview at its first hit.
+    // Bounces against obstacles and special ammo effects are still solved by Box2D.
     const inset = this.puckRadius + PUCK_CONFIG.wallThickness / 2;
-    const path = predictWallBouncePath(
+    const wallPath = predictWallBouncePath(
       this.dragStart.x, this.dragStart.y, aim.directionX, aim.directionY,
       110 + aim.strength * 385,
       {
@@ -2030,6 +2051,19 @@ export class PuckBattleBootstrap extends Component {
         top: this.arenaCenterY + this.arenaHeight / 2 - inset,
       }, 2,
     );
+    const prediction = clipGuideAtObstacles(
+      wallPath, this.activeObstacleSpecs,
+      this.arenaWidth, this.arenaHeight, this.arenaCenterY,
+      this.puckRadius + 2,
+    );
+    const path = prediction.path;
+    if (this.hintLabel) {
+      this.hintLabel.string = prediction.contact
+        ? '预计碰到' + obstacleGuideLabel(
+            prediction.contact.kind, prediction.contact.effect,
+          ) + ' · 非精确落点'
+        : '彩色轨迹仅为方向参考 · 松手即可发射';
+    }
     const guideColor = powerRatio >= 0.8 ? new Color(227, 99, 83, 255)
       : powerRatio >= 0.5 ? new Color(220, 147, 68, 255)
       : new Color(42, 130, 195, 255);
@@ -2043,6 +2077,15 @@ export class PuckBattleBootstrap extends Component {
         graphics.circle(from.x + (to.x - from.x) * t,
           from.y + (to.y - from.y) * t, i === 1 ? 4 : 3);
       }
+      graphics.fill();
+    }
+    if (prediction.contact) {
+      graphics.strokeColor = new Color(237, 109, 84, 235);
+      graphics.lineWidth = 4;
+      graphics.circle(prediction.contact.x, prediction.contact.y, 11);
+      graphics.stroke();
+      graphics.fillColor = new Color(255, 243, 205, 245);
+      graphics.circle(prediction.contact.x, prediction.contact.y, 4);
       graphics.fill();
     }
     // Red markers flag approximate intersections with existing pucks.
@@ -2059,7 +2102,7 @@ export class PuckBattleBootstrap extends Component {
         this.puckRadius + 12);
       graphics.stroke();
     }
-    if (candidateContact && this.aimPowerLabel) {
+    if (candidateContact && !prediction.contact && this.aimPowerLabel) {
       this.aimPowerLabel.string = '瞄准旧弹药 · 松开发射';
     }
     const arrowLength = 44 + aim.strength * 31;
@@ -2089,6 +2132,7 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private clearAim(): void {
+    this.aimDirty = false;
     this.aimGraphics?.clear();
     if (this.aimPowerLabel) this.aimPowerLabel.node.active = false;
   }

@@ -92,3 +92,118 @@ export function getObstacleVertices(spec: ObstacleSpec): ObstaclePoint[] {
     ];
   }
 }
+
+/** Approximate first contact between a puck centre and the expanded convex
+ * silhouette of an obstacle. Rotated shapes use the same local vertices as
+ * their Box2D collider; the polygon is expanded by the puck radius.
+ * Corners are conservatively square rather than circular, so this is a
+ * *guide* only and never replaces physics collision detection.
+ */
+export interface AimObstacleContact extends ObstaclePoint {
+  readonly id: string;
+  readonly kind: ObstacleKind;
+  readonly effect?: ObstacleEffect;
+}
+export interface ObstacleClippedGuide {
+  readonly path: ObstaclePoint[];
+  readonly contact: AimObstacleContact | null;
+}
+function edgeEntryTime(
+  from: ObstaclePoint,
+  to: ObstaclePoint,
+  vertices: ReadonlyArray<ObstaclePoint>,
+  padding: number,
+): number | null {
+  let enter = 0;
+  let exit = 1;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  for (let i = 0; i < vertices.length; i++) {
+    const a = vertices[i];
+    const b = vertices[(i + 1) % vertices.length];
+    const ex = b.x - a.x;
+    const ey = b.y - a.y;
+    const size = Math.hypot(ex, ey);
+    if (size < 0.000001) return null;
+    // CCW polygon: edge outward normal points right.
+    const nx = ey / size;
+    const ny = -ex / size;
+    const limit = nx * (a.x - from.x) + ny * (a.y - from.y) + padding;
+    const motion = nx * dx + ny * dy;
+    if (Math.abs(motion) < 0.000001) {
+      if (limit < -0.000001) return null;
+      continue;
+    }
+    const t = limit / motion;
+    if (motion < 0) enter = Math.max(enter, t);
+    else exit = Math.min(exit, t);
+    if (enter > exit + 0.000001) return null;
+  }
+  return enter >= 0 && enter <= 1 ? enter : null;
+}
+
+/** Clip a wall-reflection hint at the first possible geometric obstruction. */
+export function clipGuideAtObstacles(
+  path: ReadonlyArray<ObstaclePoint>,
+  specs: ReadonlyArray<ObstacleSpec>,
+  arenaWidth: number,
+  arenaHeight: number,
+  arenaCenterY: number,
+  puckRadius: number,
+): ObstacleClippedGuide {
+  const safePath = path.map(p => ({ x: p.x, y: p.y }));
+  if (path.length < 2 || !Number.isFinite(puckRadius) || puckRadius < 0 ||
+      !Number.isFinite(arenaWidth) || !Number.isFinite(arenaHeight) ||
+      !Number.isFinite(arenaCenterY)) {
+    return { path: safePath, contact: null };
+  }
+  const expanded = specs.map(spec => {
+    const theta = spec.angle * Math.PI / 180;
+    const cos = Math.cos(theta), sin = Math.sin(theta);
+    const x = spec.x * arenaWidth;
+    const y = arenaCenterY + spec.y * arenaHeight;
+    return {
+      spec, vertices: getObstacleVertices(spec).map(point => ({
+        x: x + point.x * cos - point.y * sin,
+        y: y + point.x * sin + point.y * cos,
+      })),
+    };
+  });
+  for (let index = 1; index < path.length; index++) {
+    const a = path[index - 1];
+    const b = path[index];
+    let first: { spec: ObstacleSpec; t: number } | null = null;
+    for (const item of expanded) {
+      const t = edgeEntryTime(a, b, item.vertices, puckRadius);
+      if (t !== null && (!first || t < first.t)) {
+        first = { spec: item.spec, t };
+      }
+    }
+    if (first) {
+      const t = first.t;
+      const point = { x: a.x + (b.x - a.x) * t,
+        y: a.y + (b.y - a.y) * t };
+      return {
+        path: [...safePath.slice(0, index), point],
+        contact: {
+          ...point,
+          id: first.spec.id,
+          kind: first.spec.kind,
+          effect: first.spec.effect,
+        },
+      };
+    }
+  }
+  return { path: safePath, contact: null };
+}
+
+/** Labels describe a *predicted* collision, never a confirmed contact. */
+export function obstacleGuideLabel(kind: ObstacleKind, effect?: ObstacleEffect): string {
+  if (effect === 'frost') return '冰霜机关';
+  if (effect === 'magnet') return '磁场柱';
+  if (effect === 'burst') return '爆裂机关';
+  return kind === 'triangle' ? '三角反射板'
+    : kind === 'bar' ? '长条挡板'
+    : kind === 'diamond' ? '菱形挡块'
+    : kind === 'hex' ? '六边形挡块' : '矩形砖块';
+}
