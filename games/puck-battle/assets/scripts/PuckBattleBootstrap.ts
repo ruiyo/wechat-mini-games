@@ -30,6 +30,13 @@ import { SaveManager } from './SaveManager';
 import { WordPuzzleController } from './WordPuzzleController';
 import { WORD_DEFINITIONS } from './WordDictionary';
 import type { AmmoType } from './WordDictionary';
+import { GlyphBlockArena } from './GlyphBlockArena';
+import type { GlyphBlockHit } from './GlyphBlockArena';
+import {
+  ArcadeRunProgress, dailyChallengeId, dailyChallengeSeed, makeSeed,
+} from './ArcadeProgression';
+import type { UpgradeDefinition } from './ArcadeProgression';
+import { chainPoints } from './FusionRules';
 
 const { ccclass } = _decorator;
 
@@ -45,6 +52,7 @@ enum GameState {
   FLYING,
   SETTLING,
   RESULT,
+  UPGRADE,
 }
 
 interface PuckEntry {
@@ -79,6 +87,17 @@ export class PuckBattleBootstrap extends Component {
   private wordPuzzle = new WordPuzzleController();
   private interactions = new PuckInteractionSystem();
   private practiceMode = false;
+  private adventureMode = false;
+  private dailyMode = false;
+  private dailyDateId = '';
+  private arcade: ArcadeRunProgress | null = null;
+  private glyphArena: GlyphBlockArena | null = null;
+  private blockScore = 0;
+  private fusionScore = 0;
+  private upgradeOverlay: Node | null = null;
+  private upgradeChoices: UpgradeDefinition[] = [];
+  private upgradeButtonLabels: Label[] = [];
+  private upgradeDescriptionLabels: Label[] = [];
   private nextPuckIndex = 0;
 
   private shotsFired = 0;
@@ -195,6 +214,8 @@ export class PuckBattleBootstrap extends Component {
     this.createArenaVisuals();
     this.createWalls();
     this.createBumpers();
+    // The arena is constructed once; stages only create/destroy tile nodes.
+    this.glyphArena = new GlyphBlockArena(this.node, (name) => this.makeRenderNode(name));
     this.createEffectLayer();
     this.createAimLayer();
     this.createHud();
@@ -204,6 +225,7 @@ export class PuckBattleBootstrap extends Component {
     this.createHelpOverlay();
     this.createPauseOverlay();
     this.createResultOverlay();
+    this.createUpgradeOverlay();
 
     this.bestScore = SaveManager.getBestScore();
     this.discoveredWordCount = 0;
@@ -229,6 +251,7 @@ export class PuckBattleBootstrap extends Component {
   }
 
   onDestroy(): void {
+    this.glyphArena?.clear();
     this.interactions.reset();
     this.node.off(Node.EventType.TOUCH_START, this.onTouchStart, this);
     this.node.off(Node.EventType.TOUCH_MOVE, this.onTouchMove, this);
@@ -238,7 +261,8 @@ export class PuckBattleBootstrap extends Component {
 
   update(deltaTime: number): void {
     if (!this.physicsReady || this.state === GameState.PAUSED ||
-        this.state === GameState.MENU || this.state === GameState.RESULT) return;
+        this.state === GameState.MENU || this.state === GameState.RESULT ||
+        this.state === GameState.UPGRADE) return;
 
     const activeFlight = this.state === GameState.FLYING ||
       this.state === GameState.SETTLING;
@@ -268,6 +292,26 @@ export class PuckBattleBootstrap extends Component {
         this.contactNotice.node.active = true;
         this.contactNotice.node.setSiblingIndex(this.node.children.length - 1);
         this.contactNoticeTimer = 0.9;
+      }
+    }
+    // Resolve Box2D tile contacts after the engine step. Fusion shockwaves
+    // may immediately crack nearby tiles and grow the same shot chain.
+    if (activeFlight && this.arcade) {
+      this.receiveGlyphHits(this.glyphArena?.update(deltaTime) || []);
+      for (const feedback of contacts) {
+        if (!feedback.fusion) continue;
+        const hits = this.glyphArena?.applyFusionBurst(
+          feedback.x, feedback.y,
+          feedback.fusion.radius, feedback.fusion.blockDamage,
+        ) || [];
+        this.receiveGlyphHits(hits);
+        this.fusionScore += chainPoints(75,
+          Math.max(1, this.glyphArena?.chainCount || 1),
+          this.arcade.chainBonus);
+      }
+      if (contacts.length > 0 || (this.glyphArena?.chainCount || 0) > 0) {
+        this.recalculateActiveScores();
+        this.updateHud();
       }
     }
     this.updateInteractionVisuals(deltaTime);
@@ -903,7 +947,9 @@ export class PuckBattleBootstrap extends Component {
     }
 
     if (this.wordPreviewLabel) {
-      this.wordPreviewLabel.string = this.wordPuzzle.getPreviewText();
+      const rewards = this.arcade ? this.wordPuzzle.getQueuedGlyphs() : [];
+      this.wordPreviewLabel.string = this.wordPuzzle.getPreviewText() +
+        (rewards.length > 0 ? ' · 待补新字 ' + rewards.join('') : '');
     }
 
     const canConfirm = this.wordPuzzle.canConfirm();
@@ -1014,12 +1060,12 @@ export class PuckBattleBootstrap extends Component {
   private createMenuOverlay(): void {
     const overlay = this.createFullScreenOverlay('MainMenuOverlay', true);
     const width = Math.min(this.screenWidth * 0.87, 630);
-    this.createPanel(overlay, 'MainMenuCard', 0, 0, width, 970, 34,
+    this.createPanel(overlay, 'MainMenuCard', 0, 0, width, 1110, 34,
       new Color(255, 255, 255, 252));
     const title = this.addChildLabel(overlay, '词弹碰碰局', width - 40,
       78, 47, new Color(47, 104, 146, 255));
     title.node.setPosition(0, 316, 0);
-    const subtitle = this.addChildLabel(overlay, '组好词  ·  弹出惊喜',
+    const subtitle = this.addChildLabel(overlay, '造词弹 · 碎字块 · 连锁升级',
       width - 44, 40, 23, new Color(109, 146, 170, 255));
     subtitle.node.setPosition(0, 246, 0);
 
@@ -1042,11 +1088,11 @@ export class PuckBattleBootstrap extends Component {
     g.fillColor = new Color(96, 178, 231, 255);
     g.circle(152, 54, 23); g.fill();
 
-    const caption = this.addChildLabel(overlay, '选字组词  →  拖拽发射  →  命中得分',
+    const caption = this.addChildLabel(overlay, '击破汉字 · 组合弹药 · 挑战字王',
       width - 50, 40, 19, new Color(75, 119, 150, 255));
     caption.node.setPosition(0, -27, 0);
 
-    this.createActionButton(overlay, 'MenuStartButton', '开始游戏',
+    this.createActionButton(overlay, 'MenuStartButton', '汉字冒险',
       0, -124, 322, 70, true);
     this.createActionButton(overlay, 'MenuPracticeButton', '碰撞练习',
       0, -207, 322, 64);
@@ -1054,9 +1100,13 @@ export class PuckBattleBootstrap extends Component {
       0, -291, 322, 61);
     this.createActionButton(overlay, 'MenuBookButton', '词语图鉴',
       0, -365, 322, 61);
+    this.createActionButton(overlay, 'MenuClassicButton', '经典无尽',
+      -this.screenWidth * 0.20, -439, 235, 58);
+    this.createActionButton(overlay, 'MenuDailyButton', '每日挑战',
+      this.screenWidth * 0.20, -439, 235, 58);
     this.menuBestLabel = this.addChildLabel(
       overlay, '历史最高 0', width - 40, 34, 20, new Color(104, 144, 172, 255));
-    this.menuBestLabel.node.setPosition(0, -438, 0);
+    this.menuBestLabel.node.setPosition(0, -520, 0);
     this.menuOverlay = overlay;
   }
 
@@ -1074,12 +1124,15 @@ export class PuckBattleBootstrap extends Component {
       '④ 按住圆盘向后拖动，看清轨迹和力度',
       '⑤ 松开发射，越靠近靶心得分越高',
       '⑥ 连击加分，失误累计五次结束',
-      '⑦ 主页「碰撞练习」可直接选择四种弹药',
+      '⑦ 冒险：击碎字块获得汉字和连锁分数',
+      '⑧ 不同弹药相撞可触发六种融合效果',
+      '⑨ 每关清除字块后选择一项强化',
+      '⑩ 经典无尽、每日挑战和碰撞练习可从主页进入',
     ].join('\n');
-    const text = this.addChildLabel(overlay, steps, width - 70, 325,
-      21, new Color(76, 113, 145, 255));
+    const text = this.addChildLabel(overlay, steps, width - 70, 360,
+      18, new Color(76, 113, 145, 255));
     text.horizontalAlign = Label.HorizontalAlign.LEFT;
-    text.lineHeight = 40;
+    text.lineHeight = 35;
     text.node.setPosition(0, 4, 0);
     this.createActionButton(overlay, 'HelpBackButton', '明白了',
       0, -225, 240, 64, true);
@@ -1178,6 +1231,8 @@ export class PuckBattleBootstrap extends Component {
   private returnToHome(): void {
     PhysicsSystem2D.instance.enable = true;
     this.practiceMode = false;
+    this.adventureMode = false;
+    this.dailyMode = false;
     this.restartRun();
     this.showHome();
   }
@@ -1208,7 +1263,10 @@ export class PuckBattleBootstrap extends Component {
     if (this.hintLabel) {
       this.hintLabel.string = this.practiceMode
         ? '选一种弹药，对准场上的旧弹药发射'
-        : '选择两个汉字，组合下一发弹药';
+        : this.arcade
+          ? '第 ' + this.arcade.stage + ' 关 · 还剩 ' + this.arcade.shotsLeft +
+            ' 发 · 击碎字块收集新字'
+          : '选择两个汉字，组合下一发弹药';
     }
     if (this.practiceMode) {
       if (this.wordPreviewLabel) {
@@ -1331,7 +1389,9 @@ export class PuckBattleBootstrap extends Component {
       return;
     }
 
-    const ammo = AmmoFactory.create(definition);
+    const ammo = this.arcade
+      ? this.arcade.modifyAmmo(AmmoFactory.create(definition))
+      : AmmoFactory.create(definition);
     this.currentAmmo = ammo;
     this.runDiscoveredWords.add(definition.word);
     SaveManager.recordDiscoveredWord(definition.word);
@@ -1349,6 +1409,7 @@ export class PuckBattleBootstrap extends Component {
       if (oldest) {
         this.bankedScore += oldest.score;
         this.interactions.unregister(oldest);
+        this.glyphArena?.unregisterPuck(oldest);
         oldest.node.destroy();
       }
     }
@@ -1454,6 +1515,7 @@ export class PuckBattleBootstrap extends Component {
     };
 
     this.interactions.register(entry);
+    if (this.arcade) this.glyphArena?.registerPuck(entry);
     this.pucks.push(entry);
     this.currentPuck = entry;
     this.currentAmmo = ammo;
@@ -1475,9 +1537,13 @@ export class PuckBattleBootstrap extends Component {
     if (this.menuOverlay?.active) {
       if (this.withinBox(point, 0, -124, 322, 76)) {
         this.practiceMode = false;
+        this.adventureMode = true;
+        this.dailyMode = false;
         this.startRun();
       } else if (this.withinBox(point, 0, -207, 322, 70)) {
         this.practiceMode = true;
+        this.adventureMode = false;
+        this.dailyMode = false;
         this.startRun();
       } else if (this.withinBox(point, 0, -291, 322, 65)) {
         if (this.helpOverlay) {
@@ -1486,6 +1552,26 @@ export class PuckBattleBootstrap extends Component {
         }
       } else if (this.withinBox(point, 0, -365, 322, 65)) {
         this.openWordBook();
+      } else if (this.withinBox(point, -this.screenWidth * 0.20, -439, 235, 65)) {
+        this.practiceMode = false;
+        this.adventureMode = false;
+        this.dailyMode = false;
+        this.startRun();
+      } else if (this.withinBox(point, this.screenWidth * 0.20, -439, 235, 65)) {
+        this.practiceMode = false;
+        this.adventureMode = true;
+        this.dailyMode = true;
+        this.startRun();
+      }
+      return;
+    }
+
+    if (this.upgradeOverlay?.active) {
+      for (let i = 0; i < this.upgradeChoices.length; i += 1) {
+        if (this.withinBox(point, 0, 130 - i * 120, 480, 92)) {
+          this.chooseUpgrade(i);
+          break;
+        }
       }
       return;
     }
@@ -1589,6 +1675,7 @@ export class PuckBattleBootstrap extends Component {
     puck.body.linearVelocity = velocity;
     puck.body.wakeUp();
     this.interactions.beginShot(puck);
+    if (this.arcade) this.glyphArena?.beginShot(puck);
 
     this.state = GameState.FLYING;
     this.settleElapsed = 0;
@@ -1725,6 +1812,8 @@ export class PuckBattleBootstrap extends Component {
   private finishCurrentShot(): void {
     this.settleElapsed = 0;
     this.shotElapsed = 0;
+    const brokeSomething = (this.glyphArena?.chainCount || 0) > 0;
+    this.glyphArena?.endShot();
     this.interactions.endShot();
 
     const currentPuck = this.currentPuck;
@@ -1743,7 +1832,7 @@ export class PuckBattleBootstrap extends Component {
     // A shot also counts as a success when it pushes an older puck into a scoring ring.
     this.recalculateActiveScores();
     const scoreDelta = this.totalScore - this.scoreBeforeShot;
-    const didScore = baseScore > 0 || scoreDelta > 0;
+    const didScore = baseScore > 0 || scoreDelta > 0 || brokeSomething;
 
     if (didScore) {
       this.comboStreak += 1;
@@ -1761,11 +1850,28 @@ export class PuckBattleBootstrap extends Component {
     }
 
     this.shotsFired += 1;
+    if (this.arcade) this.arcade.recordShot();
     this.recalculateActiveScores();
     this.currentPuck = null;
     this.currentAmmo = null;
     this.updateHud();
 
+    if (this.arcade) {
+      if (this.arcade.cleared) {
+        if (this.arcade.complete) {
+          this.finishRun();
+        } else {
+          this.showUpgradeChoice();
+        }
+        return;
+      }
+      if (this.arcade.failed) {
+        this.finishRun();
+        return;
+      }
+      this.showWordState();
+      return;
+    }
     if (!this.practiceMode && this.missCount >= PUCK_CONFIG.maxMisses) {
       this.finishRun();
       return;
@@ -1790,7 +1896,8 @@ export class PuckBattleBootstrap extends Component {
       activeScore += puck.score;
     }
 
-    this.totalScore = this.bankedScore + activeScore;
+    this.totalScore = this.bankedScore + activeScore +
+      this.blockScore + this.fusionScore;
   }
 
   private finishRun(): void {
@@ -1799,6 +1906,9 @@ export class PuckBattleBootstrap extends Component {
     if (this.ammoLabel) this.ammoLabel.node.active = false;
 
     const newBest = !this.practiceMode && this.totalScore > this.bestScore;
+    if (this.dailyMode) {
+      SaveManager.saveDailyBestScore(this.dailyDateId, this.totalScore);
+    }
     if (!this.practiceMode) {
       this.bestScore = SaveManager.saveBestScore(this.totalScore);
     }
@@ -1806,6 +1916,8 @@ export class PuckBattleBootstrap extends Component {
     if (this.resultLabel) {
       this.resultLabel.string =
         '得分  ' + this.totalScore +
+        (this.arcade ? '\n' + (this.arcade.complete
+          ? '字王已击破 · 闯关成功！' : '第 ' + this.arcade.stage + ' 关挑战结束') : '') +
         (newBest ? '\n恭喜打破最高纪录！' : '') +
         '\n发射次数  ' + this.shotsFired +
         '\n弹药相撞  ' + this.interactions.collisionCount + ' 次' +
@@ -1822,6 +1934,7 @@ export class PuckBattleBootstrap extends Component {
   }
 
   private restartRun(): void {
+    this.glyphArena?.clear();
     this.interactions.reset();
     this.effectGraphics?.clear();
     this.contactNoticeTimer = 0;
@@ -1838,6 +1951,8 @@ export class PuckBattleBootstrap extends Component {
     this.totalScore = 0;
     this.scoreBeforeShot = 0;
     this.bankedScore = 0;
+    this.blockScore = 0;
+    this.fusionScore = 0;
     this.comboStreak = 0;
     this.missCount = 0;
     this.discoveredWordCount = 0;
@@ -1847,9 +1962,18 @@ export class PuckBattleBootstrap extends Component {
     this.isDragging = false;
     this.activeTouchId = null;
     this.wordPuzzle.reset();
+    this.arcade = null;
+    if (this.adventureMode) {
+      this.dailyDateId = this.dailyMode ? dailyChallengeId(new Date()) : '';
+      const seed = this.dailyMode ? dailyChallengeSeed(new Date())
+        : makeSeed(String(Date.now()) + ':' + Math.random());
+      this.arcade = new ArcadeRunProgress(seed, this.dailyMode);
+      this.setupArcadeStage();
+    }
     this.state = GameState.WORD_SELECT;
 
     if (this.resultOverlay) this.resultOverlay.active = false;
+    if (this.upgradeOverlay) this.upgradeOverlay.active = false;
     if (this.resultLabel) this.resultLabel.node.active = true;
     this.clearAim();
     if (this.practiceMode && this.physicsReady) this.spawnPracticeTargets();
@@ -1859,34 +1983,145 @@ export class PuckBattleBootstrap extends Component {
 
   private updateHud(): void {
     if (this.gameTitleLabel) {
-      this.gameTitleLabel.string = this.practiceMode ? '碰撞练习' : '词弹碰碰局';
+      this.gameTitleLabel.string = this.practiceMode ? '碰撞练习'
+        : this.arcade ? (this.dailyMode ? '每日挑战' : '汉字冒险') +
+          ' ' + this.arcade.stage + '/4' : '词弹碰碰局';
     }
     if (this.scoreLabel) {
       this.scoreLabel.string =
         (this.practiceMode ? '练习分 ' : '总分 ') + this.totalScore;
     }
     if (this.shotsLabel) {
-      this.shotsLabel.string =
-        '发射 ' + this.shotsFired + ' · 撞击 ' +
-        this.interactions.collisionCount;
+      this.shotsLabel.string = this.arcade
+        ? '剩 ' + this.arcade.shotsLeft + ' 发 · 碎字 ' +
+          this.arcade.destroyedBlocks + '/' + this.arcade.totalBlocks
+        : '发射 ' + this.shotsFired + ' · 撞击 ' +
+          this.interactions.collisionCount;
     }
     if (this.bestLabel) {
       this.bestLabel.string = this.practiceMode
-        ? '练习不计入纪录' : '最高纪录 ' + this.bestScore;
+        ? '练习不计入纪录' : this.dailyMode
+          ? '今日最高 ' + SaveManager.getDailyBestScore(this.dailyDateId)
+          : '最高纪录 ' + this.bestScore;
     }
     if (this.comboLabel) {
       const multiplier = Math.min(
         1 + Math.max(0, this.comboStreak - 1) * PUCK_CONFIG.comboStep,
         PUCK_CONFIG.maxComboMultiplier,
       );
-      this.comboLabel.string = this.comboStreak > 0
-        ? '连击 ' + this.comboStreak + '  ×' + multiplier.toFixed(2)
-        : '连击待触发';
+      this.comboLabel.string = this.arcade && this.glyphArena?.chainCount
+        ? '破字连锁 ×' + this.glyphArena.chainCount
+        : this.comboStreak > 0
+          ? '连击 ' + this.comboStreak + '  ×' + multiplier.toFixed(2)
+          : '连击待触发';
     }
     if (this.missLabel) {
       this.missLabel.string = this.practiceMode
-        ? '自由试射' : '失误 ' + this.missCount + '/' + PUCK_CONFIG.maxMisses;
+        ? '自由试射' : this.arcade
+          ? '关卡 ' + this.arcade.stage + '/' + 4
+          : '失误 ' + this.missCount + '/' + PUCK_CONFIG.maxMisses;
     }
+  }
+
+
+  /** Replace the empty target-only loop with a playable breakable tile board. */
+  private setupArcadeStage(): void {
+    if (!this.arcade || !this.glyphArena) return;
+    const stage = this.arcade.startStage();
+    this.glyphArena.configure(this.arcade.blockDamageBonus, this.arcade.chainBonus);
+    this.glyphArena.startStage(stage,
+      this.arenaWidth, this.arenaHeight, this.arenaCenterY);
+  }
+
+  private receiveGlyphHits(hits: GlyphBlockHit[]): void {
+    if (!this.arcade || hits.length === 0) return;
+    const rewards: string[] = [];
+    for (const hit of hits) {
+      this.blockScore += hit.points;
+      if (hit.broken) {
+        this.arcade.recordDestroyed();
+        if (hit.glyph && this.wordPuzzle.collectGlyph(hit.glyph)) {
+          rewards.push(hit.glyph);
+        }
+      }
+    }
+    if (this.hintLabel) {
+      const last = hits[hits.length - 1];
+      this.hintLabel.string = '破字连锁 ×' + last.chain +
+        ' · +' + hits.reduce((sum, h) => sum + h.points, 0) +
+        (rewards.length ? ' · 获得「' + rewards.join('') + '」' : '');
+    }
+    this.recalculateActiveScores();
+    this.updateHud();
+  }
+
+  private createUpgradeOverlay(): void {
+    const overlay = this.createFullScreenOverlay('ArcadeUpgradeOverlay');
+    const width = Math.min(this.screenWidth * 0.9, 620);
+    this.createPanel(overlay, 'UpgradeCard', 0, 0, width, 715, 28);
+    const title = this.addChildLabel(overlay, '关卡完成！', width - 40, 70,
+      35, new Color(49, 101, 145, 255));
+    title.node.setPosition(0, 257, 0);
+    const sub = this.addChildLabel(overlay, '选择一项强化，打造自己的弹药流派',
+      width - 40, 40, 18, new Color(104, 151, 181, 255));
+    sub.node.setPosition(0, 205, 0);
+    for (let i = 0; i < 3; i++) {
+      const y = 130 - i * 120;
+      this.createActionButton(overlay, 'UpgradeChoice_' + i,
+        '选择强化', 0, y + 14, width - 80, 82, i === 0);
+      const label = this.addChildLabel(overlay,
+        '', width - 100, 30, 17, new Color(73, 129, 173, 255));
+      label.node.setPosition(0, y - 19, 0);
+      this.upgradeDescriptionLabels.push(label);
+    }
+    this.upgradeOverlay = overlay;
+    // Buttons created above are visible, their text is assigned through the
+    // named child Labels when generating a new random three-card offer.
+  }
+
+  private showUpgradeChoice(): void {
+    if (!this.arcade || !this.upgradeOverlay) return;
+    this.upgradeChoices = this.arcade.upgradeChoices;
+    const options = this.upgradeOverlay.children;
+    for (let i = 0; i < this.upgradeChoices.length; i++) {
+      const button = options.find((n) => n.name === 'UpgradeChoice_' + i);
+      const textNode = button?.children.find((n) => n.name === 'Label');
+      const label = textNode?.getComponent(Label);
+      if (label) label.string = this.upgradeChoices[i].title;
+      const extra = this.upgradeDescriptionLabels[i];
+      if (extra) extra.string = this.upgradeChoices[i].description;
+    }
+    this.state = GameState.UPGRADE;
+    this.setWordPanelVisible(false);
+    if (this.pauseButtonNode) this.pauseButtonNode.active = false;
+    this.upgradeOverlay.active = true;
+    this.upgradeOverlay.setSiblingIndex(this.node.children.length - 1);
+  }
+
+  private chooseUpgrade(index: number): void {
+    if (!this.arcade || this.state !== GameState.UPGRADE) return;
+    const choice = this.upgradeChoices[index];
+    if (!choice || !this.arcade.applyUpgrade(choice.id)) return;
+    // Preserve the score, but clear old physical objects before entering a new
+    // stage so frozen colliders and contact listener tables never leak.
+    this.recalculateActiveScores();
+    for (const puck of this.pucks) this.bankedScore += puck.score;
+    this.interactions.reset();
+    for (const puck of this.pucks) {
+      this.glyphArena?.unregisterPuck(puck);
+      puck.node.destroy();
+    }
+    this.pucks = [];
+    this.currentPuck = null;
+    this.currentAmmo = null;
+    this.nextPuckIndex = 0;
+    this.arcade.advance();
+    this.setupArcadeStage();
+    if (this.upgradeOverlay) this.upgradeOverlay.active = false;
+    if (this.pauseButtonNode) this.pauseButtonNode.active = true;
+    this.showWordState();
+    this.recalculateActiveScores();
+    this.updateHud();
   }
 
   private startRun(): void {
