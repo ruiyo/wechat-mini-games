@@ -5,13 +5,18 @@ export const INTERACTION_CONFIG = {
   impactMinPush: 95,
   impactMaxPush: 270,
   impactPushRatio: 0.52,
-  iceFreezeSeconds: 1.2,
-  iceVelocityRatio: 0.12,
-  iceFrozenDamping: 13,
-  magnetRange: 150,
-  magnetAcceleration: 680,
-  magnetMaxDeltaVelocity: 24,
-  magnetMaxTargetSpeed: 350,
+  // Frozen old pucks become temporary STATIC bodies instead of only slowing.
+  iceFreezeSeconds: 2.4,
+  iceVelocityRatio: 0,
+  iceFrozenDamping: 20,
+  iceAreaRadius: 108,
+  iceAreaActiveSeconds: 2.8,
+  // A moving OR resting magnetic shot attracts existing pucks for this time.
+  magnetFieldSeconds: 3.2,
+  magnetRange: 235,
+  magnetAcceleration: 2100,
+  magnetMaxDeltaVelocity: 44,
+  magnetMaxTargetSpeed: 430,
 } as const;
 
 export interface ContactDirection {
@@ -51,7 +56,10 @@ export function calculateMagnetDeltaVelocity(
       radius <= 0) return { x: 0, y: 0 };
   const distance = Math.hypot(dx, dy);
   if (distance < 0.001 || distance >= radius) return { x: 0, y: 0 };
-  const strength = Math.pow(1 - distance / radius, 0.75);
+  // Preserve a clear pull at mid/outer range while smoothly tapering
+  // toward the boundary. Cap delta-v to avoid unstable fast-frame spikes.
+  const falloff = 1 - distance / radius;
+  const strength = 0.34 + 0.66 * Math.pow(falloff, 0.75);
   const delta = Math.min(INTERACTION_CONFIG.magnetMaxDeltaVelocity,
     INTERACTION_CONFIG.magnetAcceleration * Math.min(deltaTime, 1 / 30) * strength);
   return { x: dx / distance * delta, y: dy / distance * delta };

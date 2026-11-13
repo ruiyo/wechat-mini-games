@@ -59,4 +59,8 @@ test('four ammo types have distinct, purposeful handling profiles', () => {
   assert.equal(impact.magnetRange, 0);
   assert.equal(ice.magnetRange, 0);
   assert.ok(ice.targetDamping > 6);
+  assert.ok(magnet.magnetRange >= 200);
+  assert.ok(magnet.magnetAcceleration >= 1500);
+  assert.match(magnet.description, /牵引/);
+  assert.match(ice.description, /冻结/);
 });

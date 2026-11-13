@@ -38,7 +38,7 @@ const AMMO_BASE: Record<AmmoType, Omit<AmmoDefinition, 'word'>> = {
   magnet: {
     type: 'magnet',
     name: '磁吸弹',
-    description: '飞行修正方向，并吸引附近的旧弹药。',
+    description: '发射后持续3秒牵引附近旧弹药，即使停下也有效。',
     color: [85, 157, 244],
     launchSpeedMultiplier: 0.96,
     restitution: 0.2,
@@ -47,14 +47,14 @@ const AMMO_BASE: Record<AmmoType, Omit<AmmoDefinition, 'word'>> = {
     density: 1,
     scoreMultiplier: 1,
     magnetSteer: 0.055,
-    magnetRange: 150,
-    magnetAcceleration: 680,
+    magnetRange: 235,
+    magnetAcceleration: 2100,
     targetDamping: 0.9,
   },
   ice: {
     type: 'ice',
     name: '冰冻弹',
-    description: '靠近靶心急停，撞上旧弹药会短暂冰冻。',
+    description: '寒霜范围冻结附近旧弹药约2秒，短时间无法移动。',
     color: [91, 207, 235],
     launchSpeedMultiplier: 1.04,
     restitution: 0.06,
@@ -92,7 +92,7 @@ export class AmmoFactory {
       ...base,
       word: definition.word,
       name: definition.ammoName,
-      description: definition.description,
+      description: base.description,
     };
   }
 }

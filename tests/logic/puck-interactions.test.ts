@@ -41,3 +41,21 @@ test('aiming guide reports candidate old-puck intersections', () => {
   assert.equal(pathIntersectsCircle(path, 50, 50, 18), false);
   assert.equal(pathIntersectsCircle(path, 115, 0, 18), true);
 });
+
+test('magnet remains strong at practical middle distances rather than only point blank', () => {
+  const frame = 1 / 60;
+  const radius = INTERACTION_CONFIG.magnetRange;
+  const result = calculateMagnetDeltaVelocity(radius * 0.65, 0, frame, radius);
+  assert.ok(result.x > 12, 'attraction must be visible at 65% of range');
+  assert.equal(result.y, 0);
+  assert.ok(Math.hypot(result.x, result.y) <= INTERACTION_CONFIG.magnetMaxDeltaVelocity);
+  assert.deepEqual(calculateMagnetDeltaVelocity(radius + 1, 0, frame, radius),
+    { x: 0, y: 0 });
+});
+
+test('freeze controls include a lock interval and an area of effect', () => {
+  assert.ok(INTERACTION_CONFIG.iceFreezeSeconds >= 2);
+  assert.ok(INTERACTION_CONFIG.iceAreaRadius > 2 * 19);
+  assert.equal(INTERACTION_CONFIG.iceVelocityRatio, 0);
+  assert.ok(INTERACTION_CONFIG.magnetFieldSeconds >= 3);
+});
