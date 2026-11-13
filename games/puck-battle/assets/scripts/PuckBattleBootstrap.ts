@@ -299,6 +299,11 @@ export class PuckBattleBootstrap extends Component {
     if (activeFlight && this.arcade) {
       this.receiveGlyphHits(this.glyphArena?.update(deltaTime) || []);
       for (const feedback of contacts) {
+        if (feedback.resonance) {
+          this.fusionScore += chainPoints(35 * feedback.resonance,
+            Math.max(1, this.glyphArena?.chainCount || 1),
+            this.arcade.chainBonus);
+        }
         if (!feedback.fusion) continue;
         const hits = this.glyphArena?.applyFusionBurst(
           feedback.x, feedback.y,
