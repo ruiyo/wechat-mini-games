@@ -5,7 +5,9 @@
  */
 export type ObstacleKind = 'brick' | 'triangle' | 'bar' | 'diamond' | 'hex';
 export type ObstacleMode = 'classic' | 'practice' | 'adventure';
+export type ObstacleEffect = 'frost' | 'magnet' | 'burst';
 export interface ObstacleSpec {
+  effect?: ObstacleEffect;
   id: string;
   kind: ObstacleKind;
   x: number;
@@ -58,6 +60,10 @@ export function getObstaclesForMode(
   return seeds.map(([kind, x, y, width, height, angle], index) => ({
     id: mode + '-' + chapter + '-' + index,
     kind, x, y, width, height, angle,
+    effect: mode === 'adventure' && chapter === 3
+      ? (index === 0 ? 'frost' : index === 1 ? 'magnet' : undefined)
+      : mode === 'adventure' && chapter === 4 && index === 2
+        ? 'burst' : undefined,
     restitution: kind === 'triangle' ? 0.96
       : kind === 'bar' ? 0.82
         : kind === 'hex' ? 0.72 : kind === 'diamond' ? 0.86 : 0.52,

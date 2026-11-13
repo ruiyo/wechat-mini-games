@@ -2,7 +2,9 @@ import {
   _decorator,
   BoxCollider2D,
   CircleCollider2D,
+  Collider2D,
   Color,
+  Contact2DType,
   Component,
   EventTouch,
   ERigidBody2DType,
@@ -96,6 +98,9 @@ export class PuckBattleBootstrap extends Component {
   private arcade: ArcadeRunProgress | null = null;
   private glyphArena: GlyphBlockArena | null = null;
   private obstacleNodes: Node[] = [];
+  private obstacleColliders = new Map<Collider2D, ObstacleSpec>();
+  private pendingObstacleContacts: ObstacleSpec[] = [];
+  private activatedObstacleEffects = new Set<string>();
   private blockScore = 0;
   private fusionScore = 0;
   private upgradeOverlay: Node | null = null;
@@ -326,6 +331,12 @@ export class PuckBattleBootstrap extends Component {
         this.recalculateActiveScores();
         this.updateHud();
       }
+    }
+    if (activeFlight) {
+      this.applyObstacleFields(deltaTime);
+      this.resolveObstacleContacts();
+    } else {
+      this.pendingObstacleContacts.length = 0;
     }
     this.updateInteractionVisuals(deltaTime);
     if (!activeFlight) return;
@@ -681,6 +692,12 @@ export class PuckBattleBootstrap extends Component {
 
 
   private clearObstacles(): void {
+    for (const collider of this.obstacleColliders.keys()) {
+      collider.off(Contact2DType.BEGIN_CONTACT, this.onObstacleContact, this);
+    }
+    this.obstacleColliders.clear();
+    this.pendingObstacleContacts.length = 0;
+    this.activatedObstacleEffects.clear();
     for (const node of this.obstacleNodes) node.destroy();
     this.obstacleNodes.length = 0;
   }
@@ -759,11 +776,19 @@ export class PuckBattleBootstrap extends Component {
       g.lineTo(spec.width * 0.32, spec.height * 0.1);
     }
     g.stroke();
+    if (spec.effect) {
+      const symbol = spec.effect === 'frost' ? 'ice'
+        : spec.effect === 'magnet' ? 'magnet' : 'impact';
+      this.addVectorIcon(node, 'ObstacleEffect_' + spec.effect,
+        symbol, 0, 0, Math.min(spec.height * 0.27, 15),
+        new Color(255, 255, 255, 250));
+    }
 
     const body = node.addComponent(RigidBody2D);
     body.type = ERigidBody2DType.Static;
     body.gravityScale = 0;
     body.group = 1;
+    body.enabledContactListener = !!spec.effect;
     if (round) {
       const collider = node.addComponent(BoxCollider2D);
       collider.size = new Size(spec.width, spec.height);
@@ -772,6 +797,10 @@ export class PuckBattleBootstrap extends Component {
       collider.friction = 0.12;
       collider.restitution = spec.restitution;
       collider.apply();
+      if (spec.effect) {
+        this.obstacleColliders.set(collider, spec);
+        collider.on(Contact2DType.BEGIN_CONTACT, this.onObstacleContact, this);
+      }
     } else {
       const collider = node.addComponent(PolygonCollider2D);
       collider.points = points.map((v) => new Vec2(v.x, v.y));
@@ -780,8 +809,110 @@ export class PuckBattleBootstrap extends Component {
       collider.friction = 0.12;
       collider.restitution = spec.restitution;
       collider.apply();
+      if (spec.effect) {
+        this.obstacleColliders.set(collider, spec);
+        collider.on(Contact2DType.BEGIN_CONTACT, this.onObstacleContact, this);
+      }
     }
     this.obstacleNodes.push(node);
+  }
+
+
+  /** Queue physics events only; the Box2D contact manifold is locked here. */
+  private onObstacleContact(self: Collider2D, other: Collider2D): void {
+    const spec = this.obstacleColliders.get(self);
+    if (!spec || !spec.effect || this.state !== GameState.FLYING ||
+        !this.currentPuck || other !== this.currentPuck.collider ||
+        this.activatedObstacleEffects.has(spec.id)) return;
+    if (!this.pendingObstacleContacts.some((entry) => entry.id === spec.id)) {
+      this.pendingObstacleContacts.push(spec);
+    }
+  }
+
+  private reportObstacleEffect(text: string, tint: Color): void {
+    if (this.contactNotice) {
+      this.contactNotice.string = text;
+      this.contactNotice.color = tint;
+      this.contactNotice.node.active = true;
+      this.contactNotice.node.setSiblingIndex(this.node.children.length - 1);
+      this.contactNoticeTimer = 1.1;
+    }
+    if (this.contactPlate) this.contactPlate.active = true;
+    if (this.hintLabel) this.hintLabel.string = text;
+  }
+
+  private resolveObstacleContacts(): void {
+    const events = this.pendingObstacleContacts.splice(0);
+    for (const spec of events) {
+      if (!spec.effect || this.activatedObstacleEffects.has(spec.id)) continue;
+      this.activatedObstacleEffects.add(spec.id);
+      const x = spec.x * this.arenaWidth;
+      const y = this.arenaCenterY + spec.y * this.arenaHeight;
+      if (spec.effect === 'frost') {
+        let affected = 0;
+        for (const puck of this.pucks) {
+          if (puck === this.currentPuck || puck.freezeRemaining > 0 ||
+              Math.hypot(puck.node.position.x - x,
+                puck.node.position.y - y) > 130) continue;
+          puck.freezeRemaining = 1.65;
+          puck.body.linearVelocity = new Vec2(0, 0);
+          puck.body.angularVelocity = 0;
+          puck.body.type = ERigidBody2DType.Static;
+          affected++;
+        }
+        this.reportObstacleEffect('❄ 冰霜机关 · 冰封 ' + affected + ' 颗',
+          new Color(68, 172, 230, 255));
+      } else if (spec.effect === 'burst') {
+        for (const puck of this.pucks) {
+          if (puck === this.currentPuck || puck.freezeRemaining > 0) continue;
+          const dx = puck.node.position.x - x;
+          const dy = puck.node.position.y - y;
+          const distance = Math.hypot(dx, dy);
+          if (distance >= 155 || distance < 0.01) continue;
+          const velocity = puck.body.linearVelocity;
+          const impulse = 280 * (1 - distance / 155);
+          puck.body.wakeUp();
+          puck.body.linearVelocity = new Vec2(
+            velocity.x + dx / distance * impulse,
+            velocity.y + dy / distance * impulse,
+          );
+        }
+        if (this.arcade) {
+          const hits = this.glyphArena?.applyFusionBurst(x, y, 160, 2) || [];
+          this.receiveGlyphHits(hits);
+          this.fusionScore += 40;
+          this.recalculateActiveScores();
+          this.updateHud();
+        }
+        this.reportObstacleEffect('✦ 爆裂箱 · 冲击波扩散',
+          new Color(233, 111, 82, 255));
+      }
+    }
+  }
+
+  /** The magnetic pillar applies gentle attraction each frame, without teleporting. */
+  private applyObstacleFields(deltaTime: number): void {
+    const dt = Math.max(0, Math.min(0.05, deltaTime));
+    for (const spec of this.obstacleColliders.values()) {
+      if (spec.effect !== 'magnet') continue;
+      const x = spec.x * this.arenaWidth;
+      const y = this.arenaCenterY + spec.y * this.arenaHeight;
+      for (const puck of this.pucks) {
+        if (puck.freezeRemaining > 0 ||
+            puck.body.type !== ERigidBody2DType.Dynamic) continue;
+        const dx = x - puck.node.position.x;
+        const dy = y - puck.node.position.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance > 145 || distance < 1) continue;
+        const strength = 680 * dt * (1 - distance / 145);
+        const v = puck.body.linearVelocity;
+        puck.body.wakeUp();
+        puck.body.linearVelocity = new Vec2(
+          v.x + dx / distance * strength,
+          v.y + dy / distance * strength,
+        );
+      }
+    }
   }
 
   private createEffectLayer(): void {
@@ -1833,6 +1964,8 @@ export class PuckBattleBootstrap extends Component {
     this.scoreBeforeShot = this.totalScore;
     puck.body.linearVelocity = velocity;
     puck.body.wakeUp();
+    this.activatedObstacleEffects.clear();
+    this.pendingObstacleContacts.length = 0;
     this.interactions.beginShot(puck);
     if (this.arcade) this.glyphArena?.beginShot(puck);
 
@@ -1974,6 +2107,7 @@ export class PuckBattleBootstrap extends Component {
     const brokeSomething = (this.glyphArena?.chainCount || 0) > 0;
     this.glyphArena?.endShot();
     this.interactions.endShot();
+    this.pendingObstacleContacts.length = 0;
 
     const currentPuck = this.currentPuck;
     if (!currentPuck) return;
