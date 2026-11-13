@@ -29,7 +29,7 @@ test('impact knockback is speed-dependent and bounded', () => {
 test('magnet pulls only nearby old pucks and caps one-frame acceleration', () => {
   const close = calculateMagnetDeltaVelocity(35, 0, 1 / 60);
   assert.ok(close.x > 0 && close.y === 0);
-  assert.deepEqual(calculateMagnetDeltaVelocity(160, 0, 1 / 60), { x: 0, y: 0 });
+  assert.deepEqual(calculateMagnetDeltaVelocity(INTERACTION_CONFIG.magnetRange + 1, 0, 1 / 60), { x: 0, y: 0 });
   assert.deepEqual(calculateMagnetDeltaVelocity(0, 0, 1 / 60), { x: 0, y: 0 });
   assert.deepEqual(calculateMagnetDeltaVelocity(40, 0, 0), { x: 0, y: 0 });
   const huge = calculateMagnetDeltaVelocity(20, 0, 10);
@@ -58,4 +58,16 @@ test('freeze controls include a lock interval and an area of effect', () => {
   assert.ok(INTERACTION_CONFIG.iceAreaRadius > 2 * 19);
   assert.equal(INTERACTION_CONFIG.iceVelocityRatio, 0);
   assert.ok(INTERACTION_CONFIG.magnetFieldSeconds >= 3);
+});
+
+test('magnetic acceleration belongs to ammo profile and cannot bypass safety caps', () => {
+  const radius = INTERACTION_CONFIG.magnetRange;
+  const normal = calculateMagnetDeltaVelocity(100, 0, 1 / 60, radius, 500);
+  const boosted = calculateMagnetDeltaVelocity(100, 0, 1 / 60, radius, 2500);
+  assert.ok(boosted.x > normal.x);
+  assert.equal(normal.y, 0);
+  assert.deepEqual(calculateMagnetDeltaVelocity(100, 0, 1 / 60, radius, 0),
+    { x: 0, y: 0 });
+  const capped = calculateMagnetDeltaVelocity(40, 0, 0.5, radius, 999999);
+  assert.ok(Math.hypot(capped.x, capped.y) <= INTERACTION_CONFIG.magnetMaxDeltaVelocity);
 });

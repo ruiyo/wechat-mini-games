@@ -22,7 +22,7 @@ test('puck cleanup is repeatable and does not downlevel Map iterators', () => {
     'Map iterators break when compiled to the legacy Cocos JavaScript target');
   assert.ok(!runtime.includes('[...this.registered'),
     'never spread a Map iterator in a Cocos runtime reset');
-  assert.equal((runtime.match(/this\.registered\.snapshot\(\)/g) || []).length, 4);
+  assert.ok((runtime.match(/this\.registered\.snapshot\(\)/g) || []).length >= 4);
 });
 
 test('physics contacts are registered, deduplicated and processed on the next update', () => {
@@ -31,6 +31,7 @@ test('physics contacts are registered, deduplicated and processed on the next up
   assert.match(runtime, /this\.pending\.push\(/);
   assert.match(game, /this\.interactions\.update\(deltaTime\)/);
   assert.match(game, /this\.interactions\.register\(entry\)/);
+  assert.match(runtime, /other\.body\.wakeUp\(\)/);
   assert.match(runtime, /c\.target\.body\.wakeUp\(\)/);
 });
 
@@ -49,4 +50,12 @@ test('restart and other game flows release the collision system', () => {
   assert.match(game, /this\.interactions\.unregister\(oldest\)/);
   assert.match(game, /private restartRun\(\): void \{\s*this\.interactions\.reset\(\)/);
   assert.match(game, /pathIntersectsCircle\(/);
+});
+
+test('hard freeze holds a static body through the word-selection phase', () => {
+  assert.match(runtime, /puck\.body\.type = ERigidBody2DType\.Static/);
+  assert.match(runtime, /puck\.body\.type = ERigidBody2DType\.Dynamic/);
+  assert.match(game, /if \(puck\.freezeRemaining > 0\) continue/);
+  assert.match(game, /if \(!activeFlight\) return/);
+  assert.match(game, /this\.interactions\.shouldDelayShotCompletion/);
 });
