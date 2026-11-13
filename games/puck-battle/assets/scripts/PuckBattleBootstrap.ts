@@ -1968,6 +1968,7 @@ export class PuckBattleBootstrap extends Component {
       const seed = this.dailyMode ? dailyChallengeSeed(new Date())
         : makeSeed(String(Date.now()) + ':' + Math.random());
       this.arcade = new ArcadeRunProgress(seed, this.dailyMode);
+      if (this.dailyMode) this.wordPuzzle.reset(seed);
       this.setupArcadeStage();
     }
     this.state = GameState.WORD_SELECT;
