@@ -163,3 +163,14 @@ p=u^{\gamma}.
 所有 UI 节点继续通过 `makeRenderNode` 设置 Canvas 渲染层，避免再次黑屏。主菜单、玩法说明、暂停、结算是同一 Cocos 场景的独立全屏弹层。触摸事件优先处理弹层，避免操作穿透。暂停通过禁用 `PhysicsSystem2D.instance.enable` 冻结物理推进，恢复时重新启用。
 
 所有操作参数集中在 `GameConfig` 的 `PUCK_CONFIG` 和 `AIM_CONFIG` 中；测试覆盖力度边界、倍率、UI 相机层、页面流程与输入行为。
+
+## V0.8 模块升级与物理事件链
+
+- `ArcadeProgression.ts`：确定性关卡生成器、九项升级、短局剩余发射数、完成/失败规则。
+- `FusionRules.ts`：六种双类型融合定义及连锁分数上限。
+- `GlyphBlockArena.ts`：创建带静态 RigidBody2D、BoxCollider2D 的汉字方块；命中回调排队，同步于主 update 对方块造成伤害及节点清理；统一管理场上弹药的两侧碰撞监听，避免漏回调/重复计数。
+- `PuckInteractionSystem.ts`：在真实弹间接触反馈中携带 `fusion` 数据，并对周围球施加牵引、冻结、震荡或破冰。主游戏模块收到反馈后转成汉字方块范围伤害，形成跨模块连锁。
+- `WordPuzzleController.ts`：击碎字块获得奖励字，后续组词补位优先使用；每日模式的字池和补位随机数可固定种子。
+- `SaveManager.ts`：增加每日最佳本地记录，不引入联网功能。
+- `PuckBattleBootstrap.ts`：四入口模式隔离、字块分数、短关卡推进、清关升级 UI、结算与状态生命周期。
+- 物理事件只入队，实际 Collider/Node 清理和刚体速度修改发生在主更新。每关切换清理所有旧弹药接触监听和临时状态。自动化模拟测试覆盖主流程、融合配方、掉字、字王、升级选择和每日种子；真机表现另行验收。
