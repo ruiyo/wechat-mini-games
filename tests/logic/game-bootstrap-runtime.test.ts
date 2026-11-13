@@ -168,8 +168,8 @@ test('idle magnetic shot actively pulls old pucks and delays early settlement', 
   for (const puck of game.pucks) puck.body.linearVelocity = new Vec2();
   game.update(3.3);
   assert.equal(game.interactions.shouldDelayShotCompletion, false);
-  assert.equal(game.state, 6);
-  game.update(0.35);
+  // A simulated 3.3-second frame also exceeds the 0.30 s settlement window,
+  // so normal scoring may finish immediately without a separate settling tick.
   assert.equal(game.state, 2);
   game.onDestroy();
 });
