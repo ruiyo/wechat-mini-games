@@ -1,6 +1,6 @@
 import {
-  CircleCollider2D, Collider2D, Color, Contact2DType, Graphics,
-  Node, RigidBody2D, Vec2,
+  CircleCollider2D, Collider2D, Color, Contact2DType, ERigidBody2DType,
+  Graphics, Node, RigidBody2D, Vec2,
 } from 'cc';
 import type { AmmoDefinition } from './AmmoFactory';
 import {
@@ -54,8 +54,30 @@ export class PuckInteractionSystem {
   private elapsed = 0;
   private drawElapsed = 0;
   private collisions = 0;
+  private iceBurstUsed = false;
+  private iceCloudRemaining = 0;
+  private iceCloudCenter = new Vec2();
+  private readonly iceCloudTargets = new Set<number>();
+  private magnetNoticeSent = false;
 
   get collisionCount(): number { return this.collisions; }
+
+  /** Keep the shot running while a live magnetic field can still move an old puck. */
+  get shouldDelayShotCompletion(): boolean {
+    const magnet = this.active;
+    if (!magnet || magnet.ammo.type !== 'magnet' ||
+        this.elapsed >= INTERACTION_CONFIG.magnetFieldSeconds) return false;
+    for (const old of this.registered.snapshot()) {
+      if (old === magnet || old.freezeRemaining > 0 ||
+          old.body.type !== ERigidBody2DType.Dynamic) continue;
+      const dist = Math.hypot(
+        old.node.position.x - magnet.node.position.x,
+        old.node.position.y - magnet.node.position.y,
+      );
+      if (dist > 0.001 && dist < magnet.ammo.magnetRange) return true;
+    }
+    return false;
+  }
 
   register(puck: InteractionPuck): void {
     const collider = puck && puck.collider;
@@ -84,6 +106,8 @@ export class PuckInteractionSystem {
     const previous = this.registered.remove(collider);
     if (!previous) return; // Already removed, or never registered.
     this.detachContactListener(collider);
+    this.releaseFreeze(previous);
+    this.iceCloudTargets.delete(previous.index);
     this.pending = this.pending.filter(
       (c) => c.source !== previous && c.target !== previous,
     );
@@ -95,31 +119,35 @@ export class PuckInteractionSystem {
     this.pending.length = 0;
     this.lastContact.clear();
     this.elapsed = 0;
+    this.iceBurstUsed = false;
+    this.magnetNoticeSent = false;
   }
 
   endShot(): void {
+    // A landing ice round creates an area burst even without a direct hit.
+    // Frozen old pucks remain locked for their full duration across shots.
+    if (this.active?.ammo.type === 'ice' && !this.iceBurstUsed) {
+      this.triggerIceBurst(this.active.node.position.x, this.active.node.position.y);
+    }
     this.active = null;
     this.pending.length = 0;
     this.lastContact.clear();
-    for (const puck of this.registered.snapshot()) {
-      if (puck.freezeRemaining > 0) {
-        puck.freezeRemaining = 0;
-        puck.body.linearDamping = puck.ammo.linearDamping;
-      }
-    }
   }
 
   reset(): void {
-    this.endShot();
-    // The old [...Map.values()] is not reliable after Cocos transpiles for
-    // legacy JavaScript targets. Clear via a normal Array snapshot.
+    // Do not call endShot(): its landing burst would affect a disappearing scene.
+    this.active = null;
+    this.pending.length = 0;
+    this.lastContact.clear();
+    for (const puck of this.registered.snapshot()) this.releaseFreeze(puck);
     const removed = this.registered.clear();
     for (const puck of removed) {
       if (puck) this.detachContactListener(puck.collider);
     }
-    this.active = null;
-    this.pending.length = 0;
-    this.lastContact.clear();
+    this.iceCloudTargets.clear();
+    this.iceCloudRemaining = 0;
+    this.iceBurstUsed = false;
+    this.magnetNoticeSent = false;
     this.pulses.length = 0;
     this.collisions = 0;
     this.elapsed = 0;
@@ -154,11 +182,75 @@ export class PuckInteractionSystem {
     });
   }
 
+  /**
+   * A simple freeze changes the physics body to Static, so contact impulses,
+   * wall bounces and magnets cannot move it until the timer expires.
+   * Type changes happen here, outside Box2D contact callbacks.
+   */
+  private lockPuck(puck: InteractionPuck): boolean {
+    if (puck === this.active) return false;
+    const newlyLocked = puck.freezeRemaining <= 0;
+    puck.freezeRemaining = INTERACTION_CONFIG.iceFreezeSeconds;
+    puck.body.linearVelocity = new Vec2(0, 0);
+    puck.body.angularVelocity = 0;
+    puck.body.linearDamping = INTERACTION_CONFIG.iceFrozenDamping;
+    puck.body.type = ERigidBody2DType.Static;
+    return newlyLocked;
+  }
+
+  private releaseFreeze(puck: InteractionPuck): void {
+    if (puck.freezeRemaining <= 0 &&
+        puck.body.type !== ERigidBody2DType.Static) return;
+    puck.freezeRemaining = 0;
+    puck.body.type = ERigidBody2DType.Dynamic;
+    puck.body.linearVelocity = new Vec2(0, 0);
+    puck.body.angularVelocity = 0;
+    puck.body.linearDamping = puck.ammo.linearDamping;
+    puck.body.wakeUp();
+  }
+
+  private applyIceCloud(): number {
+    if (this.iceCloudRemaining <= 0) return 0;
+    let count = 0;
+    for (const puck of this.registered.snapshot()) {
+      if (puck === this.active || this.iceCloudTargets.has(puck.index)) continue;
+      const distance = Math.hypot(
+        puck.node.position.x - this.iceCloudCenter.x,
+        puck.node.position.y - this.iceCloudCenter.y,
+      );
+      if (distance > INTERACTION_CONFIG.iceAreaRadius) continue;
+      this.iceCloudTargets.add(puck.index);
+      if (this.lockPuck(puck)) count += 1;
+    }
+    return count;
+  }
+
+  private triggerIceBurst(x: number, y: number): number {
+    this.iceBurstUsed = true;
+    this.iceCloudRemaining = INTERACTION_CONFIG.iceAreaActiveSeconds;
+    this.iceCloudCenter = new Vec2(x, y);
+    this.iceCloudTargets.clear();
+    const count = this.applyIceCloud();
+    this.addPulse(x, y, INTERACTION_CONFIG.iceAreaRadius, [90, 207, 248]);
+    return count;
+  }
+
+  private addPulse(x: number, y: number, radius: number,
+    color: [number, number, number]): void {
+    this.pulses.push({ x, y, radius, color, age: 0 });
+    if (this.pulses.length > 8) this.pulses.shift();
+  }
+
+  /**
+   * Must run even during WORD_SELECT/READY because frozen objects remain
+   * physically locked across rounds. The bootstrap skips updates on pause.
+   */
   update(deltaTime: number): CollisionFeedback[] {
-    if (!this.active) return [];
-    this.elapsed += deltaTime;
+    if (!Number.isFinite(deltaTime) || deltaTime <= 0) return [];
     const feedback: CollisionFeedback[] = [];
-    // The callback occurred in a previous physics step. Updating velocities now is safe.
+    if (this.active) this.elapsed += deltaTime;
+
+    // All contact responses happen in update, never inside the Box2D callback.
     const contacts = this.pending.splice(0);
     for (const c of contacts) {
       if (!this.registered.has(c.source.collider) ||
@@ -167,32 +259,29 @@ export class PuckInteractionSystem {
       let text = '砰！弹药相撞';
       let color: [number, number, number] = [245, 171, 80];
       let radius = 60;
-      // Only the currently fired puck applies its one-off contact ability.
       if (this.active === c.source && c.source.ammo.type === 'impact') {
-        const extraSpeed = calculateImpactPush(c.speed);
-        if (extraSpeed > 0) {
-          const velocity = c.target.body.linearVelocity;
-          c.target.body.linearVelocity = new Vec2(
-            velocity.x + c.nx * extraSpeed,
-            velocity.y + c.ny * extraSpeed,
-          );
-          c.target.body.wakeUp();
+        if (c.target.freezeRemaining > 0) {
+          text = '冰封状态 · 无法推动';
+          color = [100, 198, 235];
+        } else {
+          const extraSpeed = calculateImpactPush(c.speed);
+          if (extraSpeed > 0) {
+            const velocity = c.target.body.linearVelocity;
+            c.target.body.wakeUp();
+            c.target.body.linearVelocity = new Vec2(
+              velocity.x + c.nx * extraSpeed,
+              velocity.y + c.ny * extraSpeed,
+            );
+          }
+          text = '重击！旧弹药被撞飞';
+          color = [245, 103, 84];
+          radius = 92;
         }
-        text = '重击！旧弹药被撞飞';
-        color = [245, 103, 84];
-        radius = 92;
       } else if (this.active === c.source && c.source.ammo.type === 'ice') {
-        c.target.freezeRemaining = INTERACTION_CONFIG.iceFreezeSeconds;
-        const velocity = c.target.body.linearVelocity;
-        c.target.body.linearVelocity = new Vec2(
-          velocity.x * INTERACTION_CONFIG.iceVelocityRatio,
-          velocity.y * INTERACTION_CONFIG.iceVelocityRatio,
-        );
-        c.target.body.linearDamping = INTERACTION_CONFIG.iceFrozenDamping;
-        c.target.body.wakeUp();
-        text = '冰封！旧弹药减速';
+        const frozen = this.iceBurstUsed ? 0 : this.triggerIceBurst(c.x, c.y);
+        text = '寒霜爆发 · 冰封 ' + frozen + ' 颗';
         color = [80, 201, 238];
-        radius = 77;
+        radius = INTERACTION_CONFIG.iceAreaRadius;
       } else if (this.active === c.source && c.source.ammo.type === 'magnet') {
         text = '磁吸！弹药碰撞';
         color = [92, 157, 247];
@@ -200,45 +289,84 @@ export class PuckInteractionSystem {
         text = '弹开！高弹性碰撞';
         color = [252, 186, 66];
       }
-      this.pulses.push({ x: c.x, y: c.y, radius, color, age: 0 });
-      if (this.pulses.length > 8) this.pulses.shift();
+      this.addPulse(c.x, c.y, radius, color);
       feedback.push({ text, color, x: c.x, y: c.y });
     }
 
+    // Frozen bodies are Static for the full countdown. Never apply magnet
+    // acceleration or restore them merely because a shot has settled.
     for (const puck of this.registered.snapshot()) {
       if (puck.freezeRemaining <= 0) continue;
       puck.freezeRemaining = Math.max(0, puck.freezeRemaining - deltaTime);
-      if (puck.freezeRemaining > 0) {
-        puck.body.linearDamping = INTERACTION_CONFIG.iceFrozenDamping;
-      } else {
-        puck.body.linearDamping = puck.ammo.linearDamping;
-      }
+      if (puck.freezeRemaining <= 0) this.releaseFreeze(puck);
     }
 
-    const magnet = this.active;
-    if (magnet.ammo.type === 'magnet' &&
-        Math.hypot(magnet.body.linearVelocity.x, magnet.body.linearVelocity.y) >= 35) {
+    if (this.iceCloudRemaining > 0) {
+      const frozen = this.applyIceCloud();
+      if (frozen > 0) {
+        feedback.push({
+          text: '寒霜区域 · 冰封 ' + frozen + ' 颗',
+          color: [82, 204, 243],
+          x: this.iceCloudCenter.x, y: this.iceCloudCenter.y,
+        });
+      }
+      this.iceCloudRemaining = Math.max(0, this.iceCloudRemaining - deltaTime);
+      if (this.iceCloudRemaining <= 0) this.iceCloudTargets.clear();
+    }
+
+    const shot = this.active;
+    if (shot?.ammo.type === 'ice' && !this.iceBurstUsed &&
+        this.elapsed >= 0.3 && Math.hypot(
+          shot.body.linearVelocity.x, shot.body.linearVelocity.y,
+        ) <= 40) {
+      const frozen = this.triggerIceBurst(shot.node.position.x, shot.node.position.y);
+      feedback.push({
+        text: frozen > 0 ? '寒霜爆发 · 冰封 ' + frozen + ' 颗' : '寒霜爆发',
+        color: [80, 201, 238],
+        x: shot.node.position.x, y: shot.node.position.y,
+      });
+    }
+
+    // The magnet stays energized even after its own rigid body falls asleep.
+    // Boost a sleeping old puck with world-space velocity and explicit wakeUp.
+    if (shot?.ammo.type === 'magnet' &&
+        this.elapsed <= INTERACTION_CONFIG.magnetFieldSeconds) {
+      let affected = 0;
       for (const other of this.registered.snapshot()) {
-        if (other === magnet) continue;
+        if (other === shot || other.freezeRemaining > 0 ||
+            other.body.type !== ERigidBody2DType.Dynamic) continue;
         const dv = calculateMagnetDeltaVelocity(
-          magnet.node.position.x - other.node.position.x,
-          magnet.node.position.y - other.node.position.y,
-          deltaTime, magnet.ammo.magnetRange,
+          shot.node.position.x - other.node.position.x,
+          shot.node.position.y - other.node.position.y,
+          deltaTime, shot.ammo.magnetRange, shot.ammo.magnetAcceleration,
         );
         if (!dv.x && !dv.y) continue;
-        const v = other.body.linearVelocity;
-        let vx = v.x + dv.x, vy = v.y + dv.y;
+        const velocity = other.body.linearVelocity;
+        let vx = velocity.x + dv.x;
+        let vy = velocity.y + dv.y;
         const speed = Math.hypot(vx, vy);
         if (speed > INTERACTION_CONFIG.magnetMaxTargetSpeed) {
           vx *= INTERACTION_CONFIG.magnetMaxTargetSpeed / speed;
           vy *= INTERACTION_CONFIG.magnetMaxTargetSpeed / speed;
         }
-        other.body.linearVelocity = new Vec2(vx, vy);
         other.body.wakeUp();
+        other.body.linearVelocity = new Vec2(vx, vy);
+        affected += 1;
+      }
+      if (affected > 0 && !this.magnetNoticeSent) {
+        this.magnetNoticeSent = true;
+        feedback.push({
+          text: '磁力牵引 · 吸附 ' + affected + ' 颗',
+          color: [85, 159, 243],
+          x: shot.node.position.x, y: shot.node.position.y,
+        });
+        this.addPulse(shot.node.position.x, shot.node.position.y,
+          shot.ammo.magnetRange * 0.45, [77, 159, 247]);
       }
     }
     return feedback;
   }
+
 
   /**
    * Reusable graphics, refreshed at ~30 FPS rather than allocating many nodes.
@@ -258,23 +386,64 @@ export class PuckInteractionSystem {
     if (!show) return;
 
     const magnet = this.active;
-    if (magnet?.ammo.type === 'magnet') {
+    if (magnet?.ammo.type === 'magnet' &&
+        this.elapsed <= INTERACTION_CONFIG.magnetFieldSeconds) {
       const x = magnet.node.position.x, y = magnet.node.position.y;
-      const radius = magnet.ammo.magnetRange + Math.sin(this.elapsed * 8) * 5;
-      graphics.fillColor = new Color(83, 155, 244, 16);
-      graphics.circle(x, y, radius);
+      const radius = magnet.ammo.magnetRange;
+      const phase = Math.sin(this.elapsed * 8) * 5;
+      graphics.fillColor = new Color(83, 155, 244, 23);
+      graphics.circle(x, y, radius + phase);
       graphics.fill();
       graphics.lineWidth = 3;
-      graphics.strokeColor = new Color(69, 147, 235, 135);
-      graphics.circle(x, y, radius);
+      graphics.strokeColor = new Color(45, 141, 237, 200);
+      graphics.circle(x, y, radius + phase);
+      graphics.stroke();
+      // Bright pull-lines make the effect visible BEFORE the old puck arrives.
+      for (const other of this.registered.snapshot()) {
+        if (other === magnet || other.freezeRemaining > 0) continue;
+        const px = other.node.position.x, py = other.node.position.y;
+        const length = Math.hypot(x - px, y - py);
+        if (length >= radius || length < 1) continue;
+        graphics.lineWidth = 3;
+        graphics.strokeColor = new Color(78, 154, 235, 178);
+        graphics.moveTo(px, py);
+        graphics.lineTo(x, y);
+        graphics.stroke();
+        const t = 0.35 + 0.2 * Math.sin(this.elapsed * 9);
+        graphics.fillColor = new Color(38, 128, 237, 238);
+        graphics.circle(px + (x - px) * t, py + (y - py) * t, 5);
+        graphics.fill();
+      }
+    }
+
+    if (this.iceCloudRemaining > 0) {
+      const ratio = this.iceCloudRemaining / INTERACTION_CONFIG.iceAreaActiveSeconds;
+      const radius = INTERACTION_CONFIG.iceAreaRadius;
+      graphics.fillColor = new Color(80, 202, 244, Math.round(35 * ratio));
+      graphics.circle(this.iceCloudCenter.x, this.iceCloudCenter.y, radius);
+      graphics.fill();
+      graphics.strokeColor = new Color(81, 201, 246, Math.round(190 * ratio));
+      graphics.lineWidth = 4;
+      graphics.circle(this.iceCloudCenter.x, this.iceCloudCenter.y, radius);
       graphics.stroke();
     }
+
     for (const puck of this.registered.snapshot()) {
       const x = puck.node.position.x, y = puck.node.position.y;
       if (puck.freezeRemaining > 0) {
+        graphics.fillColor = new Color(83, 204, 248, 70);
+        graphics.circle(x, y, puckRadius + 6);
+        graphics.fill();
         graphics.lineWidth = 4;
-        graphics.strokeColor = new Color(91, 212, 248, 230);
-        graphics.circle(x, y, puckRadius + 8 + puck.freezeRemaining * 2);
+        graphics.strokeColor = new Color(54, 174, 234, 242);
+        graphics.circle(x, y, puckRadius + 9);
+        graphics.stroke();
+        // Ice-cross stays fixed while the puck's body type is Static.
+        graphics.lineWidth = 3;
+        graphics.moveTo(x - 8, y - 8);
+        graphics.lineTo(x + 8, y + 8);
+        graphics.moveTo(x - 8, y + 8);
+        graphics.lineTo(x + 8, y - 8);
         graphics.stroke();
       }
       if (puck === this.active && puck.ammo.type === 'ice' &&
@@ -294,4 +463,5 @@ export class PuckInteractionSystem {
       graphics.stroke();
     }
   }
+
 }
