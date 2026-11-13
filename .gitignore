@@ -1,0 +1,17 @@
+# Cocos Creator generated folders
+temp/
+library/
+local/
+build/
+profiles/
+logs/
+
+# Dependencies and tooling
+node_modules/
+.vscode/
+.idea/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.log

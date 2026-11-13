@@ -1,0 +1,13 @@
+{
+  "ver": "4.0.21",
+  "importer": "typescript",
+  "imported": true,
+  "uuid": "5483e827-c07a-4b2d-998d-68f49c77c10a",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "importAsPlugin": false,
+    "moduleId": "project:///assets/scripts/PuckInteractionSystem.js",
+    "importerSettings": 7
+  }
+}

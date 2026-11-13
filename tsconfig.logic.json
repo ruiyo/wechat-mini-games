@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "cc": ["./tests/fixtures/cocos-physics-mock.ts"]
+    },
+    "skipLibCheck": true,
+    "strict": false
+  },
+  "include": ["tests/**/*.ts", "games/puck-battle/assets/scripts/**/*.ts"]
+}

@@ -1,0 +1,13 @@
+{
+  "ver": "4.0.21",
+  "importer": "typescript",
+  "imported": true,
+  "uuid": "20c14ac9-7b62-47f5-a615-42de65e99035",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "importAsPlugin": false,
+    "moduleId": "project:///assets/scripts/StableColliderRegistry.js",
+    "importerSettings": 7
+  }
+}

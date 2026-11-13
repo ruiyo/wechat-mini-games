@@ -1,0 +1,13 @@
+{
+  "ver": "4.0.21",
+  "importer": "typescript",
+  "imported": true,
+  "uuid": "df23b9da-1c9c-4b68-964c-d19092171422",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "importAsPlugin": false,
+    "moduleId": "project:///assets/scripts/GlyphBlockArena.js",
+    "importerSettings": 7
+  }
+}

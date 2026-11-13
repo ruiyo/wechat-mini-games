@@ -1,0 +1,12 @@
+{
+  "platform": "wechatgame",
+  "debug": true,
+  "buildPath": "project://build",
+  "outputName": "ci-wechatgame",
+  "taskName": "wechatgame",
+  "packages": {
+    "wechatgame": {
+      "orientation": "portrait"
+    }
+  }
+}

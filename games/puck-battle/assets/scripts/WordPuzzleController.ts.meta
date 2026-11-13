@@ -1,0 +1,13 @@
+{
+  "ver": "4.0.21",
+  "importer": "typescript",
+  "imported": true,
+  "uuid": "6a2f1c90-8d34-4b72-a5e1-3c9f0d6b8a42",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "importAsPlugin": false,
+    "moduleId": "project:///assets/scripts/WordPuzzleController.js",
+    "importerSettings": 7
+  }
+}

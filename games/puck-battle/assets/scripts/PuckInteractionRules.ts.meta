@@ -1,0 +1,13 @@
+{
+  "ver": "4.0.21",
+  "importer": "typescript",
+  "imported": true,
+  "uuid": "aa6e4c0b-5d99-4d81-91a6-4b651fbe4073",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "importAsPlugin": false,
+    "moduleId": "project:///assets/scripts/PuckInteractionRules.js",
+    "importerSettings": 7
+  }
+}
