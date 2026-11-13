@@ -51,9 +51,10 @@ export function calculateImpactPush(closingSpeed: number): number {
 export function calculateMagnetDeltaVelocity(
   dx: number, dy: number, deltaTime: number,
   radius = INTERACTION_CONFIG.magnetRange,
+  acceleration = INTERACTION_CONFIG.magnetAcceleration,
 ): { x: number; y: number } {
-  if (![dx, dy, deltaTime, radius].every(Number.isFinite) || deltaTime <= 0 ||
-      radius <= 0) return { x: 0, y: 0 };
+  if (![dx, dy, deltaTime, radius, acceleration].every(Number.isFinite) || deltaTime <= 0 ||
+      radius <= 0 || acceleration <= 0) return { x: 0, y: 0 };
   const distance = Math.hypot(dx, dy);
   if (distance < 0.001 || distance >= radius) return { x: 0, y: 0 };
   // Preserve a clear pull at mid/outer range while smoothly tapering
@@ -61,7 +62,7 @@ export function calculateMagnetDeltaVelocity(
   const falloff = 1 - distance / radius;
   const strength = 0.34 + 0.66 * Math.pow(falloff, 0.75);
   const delta = Math.min(INTERACTION_CONFIG.magnetMaxDeltaVelocity,
-    INTERACTION_CONFIG.magnetAcceleration * Math.min(deltaTime, 1 / 30) * strength);
+    acceleration * Math.min(deltaTime, 1 / 30) * strength);
   return { x: dx / distance * delta, y: dy / distance * delta };
 }
 
